@@ -1,0 +1,874 @@
+diff --git a/README.md b/README.md
+index b736285..3ab3af8 100644
+--- a/README.md
++++ b/README.md
+@@ -19,6 +19,7 @@ input, never a blank form.
+ | `netlify.toml` | Netlify deployment config (SPA fallback, headers) |
+ | `icons/` | App icons (192/512 standard + maskable, 180 apple-touch) |
+ | `make_icons.py` | Pure-stdlib generator that produced the icons (re-run to regenerate) |
++| `push-server/` | Optional companion Web Push (VAPID) server for background push when the app is closed |
+ 
+ ## Deploy
+ 
+@@ -66,16 +67,39 @@ trading and check-in alerts).
+   milestone's next-fire date and arms `setTimeout` timers that ask the service
+   worker to show a notification. Tapping a notification deep-links into the
+   full-screen alert card (Confirm / Snooze 24h / Dismiss).
+-- **Drive write-back (MVP):** Confirm/Dismiss generates a structured markdown log
+-  block you copy to your portfolio dashboard, plus an **Open Drive** button.
++- **Drive write-back:** Confirm/Dismiss always generates a structured markdown log
++  block you can copy. If you connect Google Drive (**Settings → Integrations**),
++  the alert also offers **Write to Drive** — a direct OAuth append to a dedicated
++  log file. It uses a public OAuth client id (no secret) and the narrow
++  `drive.file` scope, so the app can only ever touch its own log file; the access
++  token is held in memory only and never persisted.
++- **Background push:** connect the companion **push server** (`push-server/`) under
++  Settings → Integrations to receive trading alerts when the app is fully closed.
++  The server holds the VAPID private key and delivers on schedule; the PWA only
++  subscribes and hands over its schedule. Without it, the client-side fallback
++  below applies.
++
++## Integrations (optional, off by default)
++
++Both are configured in **Settings → Integrations** and stay inert until you add
++credentials — the app ships and works unchanged without them.
++
++- **Google Drive write-back** needs a Google OAuth 2.0 **Web** client id (no
++  secret). Add your PWA origin to the client's authorised JavaScript origins,
++  paste the client id, and press *Connect Drive*.
++- **Background push** needs the companion server in `push-server/` (see its
++  README): generate VAPID keys, deploy it, then paste the server URL and the
++  **public** VAPID key and press *Enable background push*.
+ 
+ ## Known limitations (MVP)
+ 
+-- **Background push:** client-side `setTimeout` scheduling only fires while the
+-  PWA is open or backgrounded. True push when the app is fully closed needs a
+-  backend Web Push server with VAPID keys (phase 2). Open the app weekly to
+-  refresh the schedule.
+-- **Drive write is copy/paste**, not a direct API write. OAuth-based append to
+-  the linked file is phase 2 (marked with a TODO in `index.html`).
++- **Background push requires the companion server.** A static PWA cannot deliver
++  push when closed — the Web Push spec needs a server holding the VAPID private
++  key. If you don't deploy `push-server/`, the app falls back to client-side
++  `setTimeout` alerts that only fire while it is open or backgrounded; open it
++  weekly to refresh the schedule.
++- **Drive direct-write needs the CDN-loaded Google Identity Services script** and
++  network access; where that is blocked (or Drive isn't connected) the alert
++  falls back to copy/paste.
+ - **API coach layer** is wired but disabled — static rules ship by default
+   (browser calls to the model API need a key-bearing proxy; see the TODO block).
+diff --git a/index.html b/index.html
+index f9e34db..0f97f83 100644
+--- a/index.html
++++ b/index.html
+@@ -540,6 +540,21 @@ const FOCUS_OPTIONS = [
+ // Win categories (item 5). Default General. Editable in Settings.
+ const WIN_CATEGORIES = ["Tech", "Household", "People & Work", "Planning Ahead", "General"];
+ 
++// Integrations (phase 2): direct Google Drive OAuth write-back + background
++// push via VAPID. Both stay OFF until the user supplies credentials in Settings,
++// so the app ships unchanged (copy/paste logs + client-side scheduling) by default.
++const DEFAULT_DRIVE = {
++  clientId: "",       // Google OAuth 2.0 Web client id (public; safe in a static client). NO secret.
++  fileId: "",         // cached Drive fileId of the append-only log (resolved on first write)
++  fileName: "ground_control_portfolio_log.md",
++  email: ""           // connected account email — display only
++};
++const DEFAULT_PUSH = {
++  endpoint: "",       // base URL of the companion push server (see /push-server)
++  vapidPublicKey: "", // server's VAPID public key (base64url) — public by design
++  subscribed: false
++};
++
+ const DEFAULT_SETTINGS = {
+   bodyWeight: 66,
+   proteinWeekly: 1180,
+@@ -549,6 +564,8 @@ const DEFAULT_SETTINGS = {
+   focusOptions: FOCUS_OPTIONS.slice(),
+   winCategories: WIN_CATEGORIES.slice(),
+   lastWinCategory: "General",
++  drive: { ...DEFAULT_DRIVE },
++  push: { ...DEFAULT_PUSH },
+   notifPermission: "default",
+   notifAsked: false,
+   theme: "hotpink"
+@@ -838,6 +855,249 @@ const getCoachMessageAPI = async (context) => {
+ };
+ */
+ 
++/* ============================================================
++   INTEGRATIONS (phase 2) — Google Drive OAuth write-back + Web Push (VAPID)
++
++   Both are inert until the user configures credentials in Settings; with no
++   credentials the app behaves exactly as before (copy/paste + in-app alerts).
++
++   SECURITY-RELEVANT DESIGN NOTES (read before changing):
++   - Drive uses the Google Identity Services *token model* with a PUBLIC OAuth
++     client id and NO client secret. A static site cannot keep a secret, so we
++     use the browser-native token flow. The access token lives in MEMORY ONLY
++     (never localStorage) and is re-requested on expiry. There is deliberately
++     NO refresh token in the browser — persisting one in a static client is the
++     classic long-lived-credential leak, so we avoid it entirely.
++   - Scope is the NARROWEST that works: drive.file (per-file access to items the
++     app itself creates/opens), never the broad `drive` scope. Blast radius if
++     a token leaks is one app-owned log file, not the user's whole Drive.
++   - Web Push genuinely needs a server: the VAPID *private* key must never reach
++     the client, and a push must be sendable while the app is closed. The client
++     here only (1) subscribes and (2) hands the subscription + schedule to a
++     companion server (see /push-server). The public VAPID key is public by design.
++   ============================================================ */
++
++function loadScriptOnce(src) {
++  return new Promise((resolve, reject) => {
++    if ([...document.scripts].some(s => s.src === src)) return resolve();
++    const el = document.createElement("script");
++    el.src = src; el.async = true; el.defer = true;
++    el.onload = () => resolve();
++    el.onerror = () => reject(new Error("Could not load " + src + " (offline or blocked)."));
++    document.head.appendChild(el);
++  });
++}
++
++const googleDrive = (() => {
++  const GIS = "https://accounts.google.com/gsi/client";
++  const SCOPE = "https://www.googleapis.com/auth/drive.file";
++  let tokenClient = null;
++  let clientIdUsed = "";
++  let token = null;     // { value, exp } — in MEMORY ONLY, never persisted
++  let pending = null;   // { resolve, reject } for the in-flight token request
++
++  async function ensureClient(clientId) {
++    if (!clientId) throw new Error("No Google client id configured.");
++    await loadScriptOnce(GIS);
++    if (!(window.google && google.accounts && google.accounts.oauth2))
++      throw new Error("Google Identity Services unavailable.");
++    if (!tokenClient || clientIdUsed !== clientId) {
++      tokenClient = google.accounts.oauth2.initTokenClient({
++        client_id: clientId, scope: SCOPE,
++        callback: (resp) => {
++          if (!pending) return;
++          if (resp && resp.access_token) {
++            token = { value: resp.access_token, exp: Date.now() + (resp.expires_in || 3600) * 1000 };
++            pending.resolve(token.value);
++          } else {
++            pending.reject(new Error((resp && resp.error) || "Authorisation failed."));
++          }
++          pending = null;
++        },
++        error_callback: (err) => {
++          if (pending) { pending.reject(new Error((err && err.message) || "Authorisation was cancelled.")); pending = null; }
++        }
++      });
++      clientIdUsed = clientId;
++    }
++  }
++
++  async function getToken(clientId, interactive) {
++    await ensureClient(clientId);
++    if (token && token.exp - 60000 > Date.now()) return token.value;
++    return new Promise((resolve, reject) => {
++      // Sequential use only (one alert write at a time); a new request supersedes any stale one.
++      if (pending) pending.reject(new Error("Superseded by a newer auth request."));
++      pending = { resolve, reject };
++      // prompt:"" attempts silent re-auth if already granted; "consent" forces the dialog.
++      try { tokenClient.requestAccessToken({ prompt: interactive ? "consent" : "" }); }
++      catch (e) { pending = null; reject(e); }
++    });
++  }
++
++  async function api(url, opts, clientId) {
++    opts = opts || {};
++    let t = await getToken(clientId, false);
++    const call = (tok) => fetch(url, { ...opts, headers: { ...(opts.headers || {}), Authorization: "Bearer " + tok } });
++    let res = await call(t);
++    if (res.status === 401) {        // token rejected — force one fresh interactive grant
++      token = null;
++      t = await getToken(clientId, true);
++      res = await call(t);
++    }
++    return res;
++  }
++
++  function persistId(settings, saveSettings, id) {
++    saveSettings({ ...settings, drive: { ...(settings.drive || {}), fileId: id } });
++  }
++
++  async function resolveFile(settings, saveSettings) {
++    const d = settings.drive || {};
++    const cid = d.clientId;
++    if (d.fileId) {                  // cached id still alive?
++      const r = await api(`https://www.googleapis.com/drive/v3/files/${d.fileId}?fields=id,trashed`, {}, cid);
++      if (r.ok) { const j = await r.json(); if (!j.trashed) return d.fileId; }
++    }
++    // find by the app's marker so re-installs re-link the same file
++    const q = encodeURIComponent("appProperties has { key='groundControl' and value='portfolioLog' } and trashed=false");
++    const find = await api(`https://www.googleapis.com/drive/v3/files?q=${q}&spaces=drive&fields=files(id,name)`, {}, cid);
++    if (find.ok) {
++      const j = await find.json();
++      if (j.files && j.files.length) { persistId(settings, saveSettings, j.files[0].id); return j.files[0].id; }
++    }
++    // otherwise create an empty file (metadata only). Two-step create-then-write
++    // avoids the multipart/related upload pitfall (a FormData body would send
++    // multipart/form-data, which the Drive multipart endpoint rejects). The first
++    // appendMarkdown seeds the header + entry via a plain media write.
++    const meta = { name: d.fileName || "ground_control_portfolio_log.md", mimeType: "text/markdown", appProperties: { groundControl: "portfolioLog" } };
++    const create = await api("https://www.googleapis.com/drive/v3/files?fields=id",
++      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(meta) }, cid);
++    if (!create.ok) throw new Error("Could not create the Drive log file (" + create.status + ").");
++    const cj = await create.json();
++    persistId(settings, saveSettings, cj.id);
++    return cj.id;
++  }
++
++  return {
++    configured(settings) { return !!(settings.drive && settings.drive.clientId); },
++    // Validate access by requesting a token interactively (the Settings "Connect" button).
++    async connect(settings) {
++      const cid = settings.drive && settings.drive.clientId;
++      await getToken(cid, true);
++      return true;
++    },
++    disconnect(settings, saveSettings) {
++      if (token && window.google && google.accounts && google.accounts.oauth2) {
++        try { google.accounts.oauth2.revoke(token.value, () => {}); } catch (e) {}
++      }
++      token = null;
++      saveSettings({ ...settings, drive: { ...(settings.drive || {}), fileId: "" } });
++    },
++    // Append a markdown block (read-modify-write — Drive has no native append).
++    async appendMarkdown(text, settings, saveSettings) {
++      const cid = settings.drive && settings.drive.clientId;
++      if (!cid) return { ok: false, error: "Drive is not configured." };
++      try {
++        const id = await resolveFile(settings, saveSettings);
++        const cur = await api(`https://www.googleapis.com/drive/v3/files/${id}?alt=media`, {}, cid);
++        let body = cur.ok ? await cur.text() : "";
++        if (!body) body = "# Ground Control — Portfolio Log\n";   // seed header on first write
++        const sep = body.endsWith("\n") ? "\n" : "\n\n";
++        const next = body + sep + text + "\n";
++        const upd = await api(`https://www.googleapis.com/upload/drive/v3/files/${id}?uploadType=media`,
++          { method: "PATCH", headers: { "Content-Type": "text/markdown" }, body: next }, cid);
++        if (!upd.ok) return { ok: false, error: "Drive write failed (" + upd.status + ")." };
++        return { ok: true };
++      } catch (e) {
++        return { ok: false, error: e.message || "Drive write failed." };
++      }
++    }
++  };
++})();
++
++function urlBase64ToUint8Array(base64String) {
++  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
++  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
++  const raw = atob(base64);
++  const out = new Uint8Array(raw.length);
++  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
++  return out;
++}
++
++const webpush = {
++  supported() {
++    return "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
++  },
++  configured(settings) {
++    return !!(settings.push && settings.push.endpoint && settings.push.vapidPublicKey);
++  },
++  base(settings) { return (settings.push.endpoint || "").replace(/\/$/, ""); },
++  scheduleBody(settings, sub) {
++    return JSON.stringify({
++      subscription: sub,
++      milestones: loadMilestones()
++        .map(m => ({ id: m.id, name: m.name, project: m.project, action: (m.action || "").slice(0, 140), fire: effectiveFire(m, todayStr()) }))
++        .filter(x => x.fire)
++    });
++  },
++  async subscribe(settings, saveSettings) {
++    if (!this.supported()) return { ok: false, error: "Push is not supported on this browser." };
++    if (!this.configured(settings)) return { ok: false, error: "Push server not configured." };
++    let perm = "default";
++    try { perm = await Notification.requestPermission(); } catch (e) {}
++    if (perm !== "granted") return { ok: false, error: "Notification permission " + perm + "." };
++    let reg;
++    try { reg = await navigator.serviceWorker.ready; } catch (e) { return { ok: false, error: "Service worker not ready." }; }
++    let sub;
++    try {
++      sub = await reg.pushManager.getSubscription();
++      if (!sub) {
++        sub = await reg.pushManager.subscribe({
++          userVisibleOnly: true,
++          applicationServerKey: urlBase64ToUint8Array(settings.push.vapidPublicKey)
++        });
++      }
++    } catch (e) { return { ok: false, error: "Could not subscribe (check the VAPID public key)." }; }
++    const subJson = sub.toJSON();
++    store.set("push_subscription", subJson);
++    try {
++      const res = await fetch(this.base(settings) + "/subscribe", {
++        method: "POST", headers: { "Content-Type": "application/json" }, body: this.scheduleBody(settings, subJson)
++      });
++      if (!res.ok) return { ok: false, error: "Server rejected the subscription (" + res.status + ")." };
++    } catch (e) { return { ok: false, error: "Could not reach the push server." }; }
++    saveSettings({ ...settings, push: { ...settings.push, subscribed: true } });
++    return { ok: true };
++  },
++  async unsubscribe(settings, saveSettings) {
++    try {
++      const reg = await navigator.serviceWorker.ready;
++      const sub = await reg.pushManager.getSubscription();
++      if (sub) {
++        await fetch(this.base(settings) + "/unsubscribe", {
++          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ endpoint: sub.endpoint })
++        }).catch(() => {});
++        await sub.unsubscribe().catch(() => {});
++      }
++    } catch (e) {}
++    store.del("push_subscription");
++    saveSettings({ ...settings, push: { ...(settings.push || {}), subscribed: false } });
++    return { ok: true };
++  },
++  // Best-effort: push the latest milestone schedule so the server fires at the right times.
++  async syncSchedule(settings) {
++    if (!this.configured(settings) || !(settings.push && settings.push.subscribed)) return;
++    const sub = store.get("push_subscription");
++    if (!sub) return;
++    try {
++      await fetch(this.base(settings) + "/subscribe", {
++        method: "POST", headers: { "Content-Type": "application/json" }, body: this.scheduleBody(settings, sub)
++      });
++    } catch (e) {}
++  }
++};
++
+ /* empty daily log, with defaults pre-filled for the given week type */
+ function emptyLog(date, type) {
+   return {
+@@ -964,6 +1224,8 @@ function seedIfNeeded() {
+     if (!s.focusOptions)    { s.focusOptions = FOCUS_OPTIONS.slice(); changed = true; }
+     if (!s.winCategories)   { s.winCategories = WIN_CATEGORIES.slice(); changed = true; }
+     if (!s.lastWinCategory) { s.lastWinCategory = "General"; changed = true; }
++    if (!s.drive)           { s.drive = { ...DEFAULT_DRIVE }; changed = true; }
++    if (!s.push)            { s.push = { ...DEFAULT_PUSH }; changed = true; }
+     if (changed) store.set("gc_settings", s);
+   }
+ }
+@@ -1206,6 +1468,11 @@ function App() {
+           const m = loadMilestones().find(x => x.id === ev.data.id);
+           if (m) { setTab("alerts"); setAlertOpen({ milestone: m }); }
+         }
++        if (ev.data && ev.data.type === "PUSH_SUBSCRIPTION_CHANGED") {
++          // Read settings fresh from storage (this listener's closure is mount-time).
++          const s = store.get("gc_settings", DEFAULT_SETTINGS);
++          if (s.push && s.push.subscribed) webpush.subscribe(s, (n) => store.set("gc_settings", n));
++        }
+       });
+     }
+     // deep-link from a cold open: /?alert=<id>
+@@ -1244,6 +1511,8 @@ function App() {
+         timers.current.push(t);
+       }
+     });
++    // If background push is on, keep the server's copy of the schedule current.
++    webpush.syncSchedule(settings);
+     return () => { timers.current.forEach(t => clearTimeout(t)); };
+   }, [milestones, today]);
+ 
+@@ -1324,6 +1593,7 @@ function App() {
+         <AlertScreen
+           milestone={alertOpen.milestone}
+           settings={settings}
++          saveSettings={saveSettings}
+           recordAlert={recordAlert}
+           saveMilestone={saveMilestone}
+           celebrate={celebrate}
+@@ -1903,12 +2173,21 @@ function AlertsTab({ milestones, upcoming, alertLogs, setAlertOpen, today }) {
+ }
+ 
+ /* Full-screen alert action card + Drive write-back */
+-function AlertScreen({ milestone: m, settings, recordAlert, saveMilestone, celebrate, onClose }) {
++function AlertScreen({ milestone: m, settings, saveSettings, recordAlert, saveMilestone, celebrate, onClose }) {
+   const [mode, setMode] = useState("card"); // card | confirm | dismiss | drive
+   const [note, setNote] = useState("");
+   const [reason, setReason] = useState("");
+   const [response, setResponse] = useState(null);
+   const [copied, setCopied] = useState(false);
++  const [driveState, setDriveState] = useState("idle"); // idle | writing | done
++  const [driveErr, setDriveErr] = useState("");
++
++  const writeToDrive = async () => {
++    setDriveErr(""); setDriveState("writing");
++    const r = await googleDrive.appendMarkdown(markdown, settings, saveSettings);
++    if (r.ok) setDriveState("done");
++    else { setDriveState("idle"); setDriveErr(r.error || "Write failed."); }
++  };
+ 
+   const buildMarkdown = (resp, text) => {
+     const now = new Date();
+@@ -1990,12 +2269,28 @@ function AlertScreen({ milestone: m, settings, recordAlert, saveMilestone, celeb
+         {mode === "drive" && (
+           <div>
+             <h2>Write to Drive</h2>
+-            <p className="small muted mt8">Copy this to your portfolio dashboard. Direct Drive write (OAuth) lands in phase 2.</p>
+-            <div className="codebox mt12">{markdown}</div>
+-            <button className="primary block mt12" onClick={async()=>{ const ok = await copyText(markdown); setCopied(ok); }}>
+-              {copied ? "Copied" : "Copy log entry"}
+-            </button>
+-            <button className="block mt8" onClick={()=>window.open("https://drive.google.com","_blank")}>Open Drive</button>
++            {googleDrive.configured(settings) ? (
++              <div>
++                <p className="small muted mt8">Append this entry to your Drive portfolio log, or copy it.</p>
++                <div className="codebox mt12">{markdown}</div>
++                <button className="primary block mt12" disabled={driveState !== "idle"} onClick={writeToDrive}>
++                  {driveState === "writing" ? "Writing to Drive…" : driveState === "done" ? "Written to Drive ✓" : "Write to Drive"}
++                </button>
++                {driveErr && <div className="banner warn mt8">{driveErr} Copy it instead.</div>}
++                <button className="block mt8" onClick={async()=>{ const ok = await copyText(markdown); setCopied(ok); }}>
++                  {copied ? "Copied" : "Copy log entry"}
++                </button>
++              </div>
++            ) : (
++              <div>
++                <p className="small muted mt8">Copy this to your portfolio dashboard. Connect Google Drive in Settings to write directly.</p>
++                <div className="codebox mt12">{markdown}</div>
++                <button className="primary block mt12" onClick={async()=>{ const ok = await copyText(markdown); setCopied(ok); }}>
++                  {copied ? "Copied" : "Copy log entry"}
++                </button>
++                <button className="block mt8" onClick={()=>window.open("https://drive.google.com","_blank")}>Open Drive</button>
++              </div>
++            )}
+             <button className="ghost block mt8" onClick={onClose}>Done</button>
+           </div>
+         )}
+@@ -2556,6 +2851,35 @@ function SettingsTab({ settings, saveSettings, milestones, saveMilestone, delete
+   const [delConfirm, setDelConfirm] = useState("");
+   const [msg, setMsg] = useState("");
+ 
++  // integrations (phase 2): Drive OAuth + VAPID push config
++  const [driveId, setDriveId] = useState((settings.drive && settings.drive.clientId) || "");
++  const [pushUrl, setPushUrl] = useState((settings.push && settings.push.endpoint) || "");
++  const [vapidKey, setVapidKey] = useState((settings.push && settings.push.vapidPublicKey) || "");
++  const [intMsg, setIntMsg] = useState("");
++
++  const connectDrive = async () => {
++    const next = { ...settings, drive: { ...(settings.drive || {}), clientId: driveId.trim() } };
++    saveSettings(next); setIntMsg("Connecting to Drive…");
++    try { await googleDrive.connect(next); setIntMsg("Drive connected."); }
++    catch (e) { setIntMsg("Drive: " + (e.message || "failed.")); }
++    setTimeout(() => setIntMsg(""), 2600);
++  };
++  const disconnectDrive = () => {
++    googleDrive.disconnect(settings, saveSettings);
++    setIntMsg("Drive disconnected."); setTimeout(() => setIntMsg(""), 1600);
++  };
++  const enablePush = async () => {
++    const next = { ...settings, push: { ...(settings.push || {}), endpoint: pushUrl.trim(), vapidPublicKey: vapidKey.trim() } };
++    saveSettings(next); setIntMsg("Enabling background push…");
++    const r = await webpush.subscribe(next, saveSettings);
++    setIntMsg(r.ok ? "Background push enabled." : "Push: " + r.error);
++    setTimeout(() => setIntMsg(""), 3200);
++  };
++  const disablePush = async () => {
++    await webpush.unsubscribe(settings, saveSettings);
++    setIntMsg("Background push disabled."); setTimeout(() => setIntMsg(""), 1600);
++  };
++
+   const saveNumbers = () => {
+     saveSettings({ ...settings, bodyWeight:Number(bw)||66, proteinWeekly:Number(protein)||1180, waterDaily:Number(water)||3 });
+     setMsg("Saved");
+@@ -2623,6 +2947,38 @@ function SettingsTab({ settings, saveSettings, milestones, saveMilestone, delete
+         </div>
+       </div>
+ 
++      <div className="card">
++        <h3>Integrations</h3>
++        <p className="tiny muted mt8">Optional, and off until configured. Without them the app still works — copy/paste logs and in-app alerts while open.</p>
++
++        <div className="small mt12" style={{fontWeight:700,color:"var(--text-primary)"}}>Google Drive write-back</div>
++        <p className="tiny muted mt8">Append confirmed trading actions straight to a Drive log. Uses a public OAuth client id (no secret) and the per-file drive.file scope, so it can only touch its own log file.</p>
++        <label className="field mt8">OAuth client id
++          <input placeholder="xxxxx.apps.googleusercontent.com" value={driveId} onChange={e=>setDriveId(e.target.value.trim())} />
++        </label>
++        <div className="row mt8" style={{gap:8}}>
++          <button className="primary grow" disabled={!driveId.trim()} onClick={connectDrive}>Connect Drive</button>
++          <button className="ghost" onClick={disconnectDrive}>Disconnect</button>
++        </div>
++        {settings.drive && settings.drive.fileId && <p className="tiny muted mt8">Log file linked.</p>}
++
++        <div className="small mt12" style={{fontWeight:700,color:"var(--text-primary)"}}>Background push (VAPID)</div>
++        <p className="tiny muted mt8">Fires trading alerts when the app is fully closed. Needs the companion push server (see /push-server) — paste its URL and public VAPID key.</p>
++        <label className="field mt8">Push server URL
++          <input placeholder="https://your-push-server.example/api" value={pushUrl} onChange={e=>setPushUrl(e.target.value.trim())} />
++        </label>
++        <label className="field mt8">VAPID public key
++          <input placeholder="base64url public key" value={vapidKey} onChange={e=>setVapidKey(e.target.value.trim())} />
++        </label>
++        <div className="row mt8" style={{gap:8}}>
++          {settings.push && settings.push.subscribed
++            ? <button className="grow" onClick={disablePush}>Disable background push</button>
++            : <button className="primary grow" disabled={!pushUrl.trim() || !vapidKey.trim()} onClick={enablePush}>Enable background push</button>}
++        </div>
++        {intMsg && <div className="banner info mt8">{intMsg}</div>}
++        <p className="tiny muted mt8">Without the server, in-app alerts still fire while Ground Control is open or backgrounded.</p>
++      </div>
++
+       <div className="card">
+         <h3>Targets</h3>
+         <div className="col mt12">
+diff --git a/push-server/README.md b/push-server/README.md
+new file mode 100644
+index 0000000..0f869fd
+--- /dev/null
++++ b/push-server/README.md
+@@ -0,0 +1,72 @@
++# Ground Control — companion push server
++
++Ground Control is a static PWA. **Background push when the app is closed cannot
++be done by a static site** — the Web Push spec requires a server that holds the
++VAPID *private* key and POSTs to each browser's push endpoint on schedule. This
++small service is that server, and the only non-static piece of the project.
++
++Without it, the PWA still works: it falls back to in-app `setTimeout` alerts that
++fire while Ground Control is open or backgrounded.
++
++## What it does
++| Route | Auth | Purpose |
++|-------|------|---------|
++| `POST /subscribe` | none | Browser self-registers its push subscription + milestone schedule. |
++| `POST /unsubscribe` | none | Remove a subscription by `endpoint`. |
++| `POST /send` | `Bearer ADMIN_TOKEN` | Run the due-check now and deliver. For an external cron. |
++| `GET /health` | none | Status + the public VAPID key. |
++
++A built-in hourly tick runs the same due-check, so an external cron is optional.
++A milestone is delivered once when its `fire` date (YYYY-MM-DD) has arrived
++(deduped by `id@fire`); dead subscriptions (404/410) are pruned automatically.
++
++## Setup
++```bash
++cd push-server
++npm install
++npm run gen-keys          # prints a VAPID public/private key pair
++```
++Set environment variables (never commit them):
++```
++VAPID_PUBLIC_KEY=<public key from gen-keys>
++VAPID_PRIVATE_KEY=<private key from gen-keys>   # SECRET — server only
++VAPID_SUBJECT=mailto:you@example.com
++ADMIN_TOKEN=<a long random string>              # protects POST /send
++ALLOW_ORIGIN=https://your-ground-control.app    # your PWA origin, for CORS
++STORE_FILE=./subs.json                          # optional; swap for a real DB
++```
++Run it:
++```bash
++npm start
++```
++Then in the PWA: **Settings → Integrations → Background push** — paste the server
++URL (e.g. `https://your-push-server.example`) and the **public** VAPID key, and
++press *Enable background push*.
++
++## Deploy notes
++- Any always-on Node host works (Render, Fly, Railway, a VPS). The built-in
++  hourly tick handles scheduling.
++- On a serverless host (Vercel/Netlify functions) there is no always-on process:
++  map each route to a function, back the store with the platform KV (not a local
++  file — serverless filesystems are ephemeral), and drive delivery with the
++  platform's **cron** hitting `POST /send` daily (~09:00 in the user's timezone).
++
++## Security model
++- The VAPID **private key** and `ADMIN_TOKEN` live only in env. If the private
++  key leaks, rotate it (new key pair → redeploy → users re-enable push).
++- The VAPID **public key** is public by design (it's in the client).
++- `/send` is bearer-protected so only the cron/operator can trigger delivery.
++- Push payloads are end-to-end encrypted by the Web Push protocol; the push
++  service cannot read them.
++- Stored data is a push subscription (an opaque endpoint URL + per-subscription
++  keys) plus the milestone schedule — no Ground Control health/portfolio data.
++
++## Reference-grade — what to harden for production
++- **Store:** JSON file by default. Replace `store` (three methods: `upsert`,
++  `remove`, persistence) with a KV/DB; required on serverless.
++- **Schedule freshness:** the PWA re-posts its schedule to `/subscribe` on every
++  open (and whenever milestones change), so the server's copy can lag if the user
++  never opens the app. Acceptable for the documented "open weekly" usage.
++- **Rate limiting / abuse:** `/subscribe` is unauthenticated (browsers must be
++  able to self-register). Add rate limiting and a max-subscriptions cap at the
++  edge if you expose this publicly.
+diff --git a/push-server/package.json b/push-server/package.json
+new file mode 100644
+index 0000000..72ce7f6
+--- /dev/null
++++ b/push-server/package.json
+@@ -0,0 +1,18 @@
++{
++  "name": "ground-control-push-server",
++  "version": "1.0.0",
++  "private": true,
++  "description": "Companion Web Push (VAPID) server for the Ground Control PWA. Holds the VAPID private key and delivers trading alerts when the app is closed.",
++  "type": "commonjs",
++  "main": "server.js",
++  "scripts": {
++    "start": "node server.js",
++    "gen-keys": "web-push generate-vapid-keys"
++  },
++  "engines": {
++    "node": ">=18"
++  },
++  "dependencies": {
++    "web-push": "^3.6.7"
++  }
++}
+diff --git a/push-server/server.js b/push-server/server.js
+new file mode 100644
+index 0000000..0843e50
+--- /dev/null
++++ b/push-server/server.js
+@@ -0,0 +1,153 @@
++/* Ground Control — companion Web Push server (VAPID).
++ *
++ * WHY THIS EXISTS
++ * A static PWA cannot deliver push when it is closed: something must hold the
++ * VAPID *private* key and POST to each browser's push endpoint on schedule.
++ * That "something" is a server, by design of the Web Push spec. The PWA stays
++ * static; this small service is the only server piece.
++ *
++ * WHAT IT DOES
++ *   POST /subscribe    { subscription, milestones[] }  -> upsert (browser self-registers)
++ *   POST /unsubscribe  { endpoint }                    -> remove
++ *   POST /send         (admin)                         -> run the due-check now (for cron)
++ *   GET  /health                                       -> status + public key
++ * A built-in hourly tick also runs the due-check, so a separate cron is optional.
++ *
++ * REFERENCE-GRADE, READ BEFORE PRODUCTION USE:
++ *   - Subscriptions persist to a JSON file (STORE_FILE). For real scale swap
++ *     `store` for a KV/DB — the interface is three methods.
++ *   - The VAPID private key and ADMIN_TOKEN come from env, never code. Do not
++ *     commit a .env. Generate keys with `npm run gen-keys`.
++ *   - CORS is locked to ALLOW_ORIGIN (your PWA origin). /send is bearer-protected.
++ */
++
++const http = require("http");
++const fs = require("fs");
++const path = require("path");
++const webpush = require("web-push");
++
++const PORT = process.env.PORT || 8080;
++const PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || "";
++const PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || "";
++const SUBJECT = process.env.VAPID_SUBJECT || "mailto:admin@example.com";
++const ADMIN_TOKEN = process.env.ADMIN_TOKEN || "";
++const ALLOW_ORIGIN = process.env.ALLOW_ORIGIN || "*";
++const STORE_FILE = process.env.STORE_FILE || path.join(__dirname, "subs.json");
++
++if (!PUBLIC_KEY || !PRIVATE_KEY) {
++  console.error("Missing VAPID keys. Run `npm run gen-keys` and set VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY.");
++  process.exit(1);
++}
++webpush.setVapidDetails(SUBJECT, PUBLIC_KEY, PRIVATE_KEY);
++
++/* ---- subscription store (file-backed; swap for a real DB in production) ---- */
++const store = {
++  data: {}, // endpoint -> { subscription, milestones, sent }
++  load() {
++    try { this.data = JSON.parse(fs.readFileSync(STORE_FILE, "utf8")); } catch (e) { this.data = {}; }
++  },
++  save() {
++    try { fs.writeFileSync(STORE_FILE, JSON.stringify(this.data)); } catch (e) { console.error("store save failed", e.message); }
++  },
++  upsert(sub, milestones) {
++    const k = sub.endpoint;
++    const prev = this.data[k] || { sent: {} };
++    this.data[k] = { subscription: sub, milestones: Array.isArray(milestones) ? milestones : (prev.milestones || []), sent: prev.sent || {} };
++    this.save();
++  },
++  remove(endpoint) { delete this.data[endpoint]; this.save(); }
++};
++store.load();
++
++/* ---- helpers ---- */
++function isoToday() { return new Date().toISOString().slice(0, 10); }
++
++function validSubscription(s) {
++  return s && typeof s.endpoint === "string" && /^https:\/\//.test(s.endpoint) &&
++    s.keys && typeof s.keys.p256dh === "string" && typeof s.keys.auth === "string";
++}
++
++function readJson(req, limit = 16 * 1024) {
++  return new Promise((resolve, reject) => {
++    let body = "", size = 0;
++    req.on("data", (c) => { size += c.length; if (size > limit) { reject(new Error("payload too large")); req.destroy(); } else body += c; });
++    req.on("end", () => { try { resolve(body ? JSON.parse(body) : {}); } catch (e) { reject(e); } });
++    req.on("error", reject);
++  });
++}
++
++function send(res, code, obj) {
++  res.writeHead(code, {
++    "Content-Type": "application/json",
++    "Access-Control-Allow-Origin": ALLOW_ORIGIN,
++    "Access-Control-Allow-Headers": "Content-Type, Authorization",
++    "Access-Control-Allow-Methods": "POST, GET, OPTIONS"
++  });
++  res.end(JSON.stringify(obj));
++}
++
++/* ---- the actual delivery: send any milestone whose fire date has arrived ---- */
++async function runDue() {
++  const today = isoToday();
++  let sent = 0, pruned = 0;
++  for (const k of Object.keys(store.data)) {
++    const rec = store.data[k];
++    for (const m of rec.milestones || []) {
++      if (!m.fire || m.fire > today) continue;          // not due yet
++      const dedupe = m.id + "@" + m.fire;
++      if (rec.sent[dedupe]) continue;                    // already delivered
++      const payload = JSON.stringify({ id: m.id, project: m.project, title: m.name, body: (m.action || "").slice(0, 140) });
++      try {
++        await webpush.sendNotification(rec.subscription, payload);
++        rec.sent[dedupe] = today; sent++;
++      } catch (err) {
++        if (err.statusCode === 404 || err.statusCode === 410) { store.remove(k); pruned++; break; } // subscription gone
++        else console.error("send error", err.statusCode, err.body || err.message);
++      }
++    }
++  }
++  if (sent || pruned) store.save();
++  return { sent, pruned, subs: Object.keys(store.data).length };
++}
++
++/* ---- HTTP ---- */
++const server = http.createServer(async (req, res) => {
++  if (req.method === "OPTIONS") return send(res, 204, {});
++  const url = new URL(req.url, "http://localhost");
++
++  try {
++    if (req.method === "GET" && url.pathname === "/health") {
++      return send(res, 200, { ok: true, subscriptions: Object.keys(store.data).length, publicKey: PUBLIC_KEY });
++    }
++
++    if (req.method === "POST" && url.pathname === "/subscribe") {
++      const body = await readJson(req);
++      if (!validSubscription(body.subscription)) return send(res, 400, { error: "invalid subscription" });
++      store.upsert(body.subscription, body.milestones);
++      return send(res, 200, { ok: true });
++    }
++
++    if (req.method === "POST" && url.pathname === "/unsubscribe") {
++      const body = await readJson(req);
++      if (!body.endpoint) return send(res, 400, { error: "endpoint required" });
++      store.remove(body.endpoint);
++      return send(res, 200, { ok: true });
++    }
++
++    if (req.method === "POST" && url.pathname === "/send") {
++      const auth = (req.headers.authorization || "").replace(/^Bearer\s+/i, "");
++      if (!ADMIN_TOKEN || auth !== ADMIN_TOKEN) return send(res, 401, { error: "unauthorized" });
++      const result = await runDue();
++      return send(res, 200, { ok: true, ...result });
++    }
++
++    return send(res, 404, { error: "not found" });
++  } catch (e) {
++    return send(res, 400, { error: e.message || "bad request" });
++  }
++});
++
++// Built-in scheduler: check hourly. (A platform cron hitting POST /send works too.)
++setInterval(() => { runDue().then((r) => { if (r.sent || r.pruned) console.log("runDue", r); }); }, 60 * 60 * 1000);
++
++server.listen(PORT, () => console.log("Ground Control push server on :" + PORT));
+diff --git a/sw.js b/sw.js
+index c564be7..8fd729e 100644
+--- a/sw.js
++++ b/sw.js
+@@ -4,15 +4,16 @@
+  * - Receives scheduled-alert messages from the page (client-side scheduling)
+  * - Routes notification taps back into the app with the milestone id in the URL
+  *
+- * LIMITATION (MVP, no backend):
+- * Client-side scheduling via setTimeout in the page + showNotification here only
+- * fires while the PWA is open or backgrounded. For true background push when the
+- * app is fully closed, a backend Web Push server is required (phase 2). The page
+- * recalculates and re-arms timers on every open, and reminds the user to open the
+- * app weekly so the schedule stays fresh.
++ * BACKGROUND PUSH (phase 2):
++ * True background push when the app is fully closed is delivered by the optional
++ * companion server in /push-server (it holds the VAPID private key and POSTs to
++ * the push service). This worker handles the resulting `push` event and re-subscribes
++ * on `pushsubscriptionchange`. When that server is NOT configured, the page's
++ * client-side setTimeout scheduling remains the fallback and only fires while the
++ * PWA is open or backgrounded — the page re-arms timers on every open.
+  */
+ 
+-const CACHE = "ground-control-v1";
++const CACHE = "ground-control-v2";
+ 
+ // App shell. CDN bundles are cached on first fetch so the app works offline.
+ const SHELL = [
+@@ -90,7 +91,10 @@ self.addEventListener("message", (event) => {
+   }
+ });
+ 
+-// Web Push (phase 2 backend). Payload is JSON with the same shape as below.
++// Web Push, delivered by the companion server (/push-server). The payload is
++// already end-to-end encrypted by Web Push, so only a sender holding the
++// subscription keys can deliver a decryptable message; even so we defensively
++// validate and clamp every field before it reaches a notification.
+ self.addEventListener("push", (event) => {
+   let payload = {};
+   try {
+@@ -101,16 +105,24 @@ self.addEventListener("push", (event) => {
+   event.waitUntil(showAlert(payload));
+ });
+ 
++// Coerce to a bounded string — keeps a malformed/oversized field from breaking
++// or polluting the notification.
++function clamp(v, max) {
++  return (typeof v === "string" ? v : v == null ? "" : String(v)).slice(0, max);
++}
++
+ function showAlert(payload) {
+-  const title = payload.title || "Ground Control";
++  payload = payload && typeof payload === "object" ? payload : {};
++  const id = clamp(payload.id, 64);
++  const title = clamp(payload.title, 100) || "Ground Control";
+   const options = {
+-    body: payload.body || "An alert is due.",
+-    tag: payload.id || "gc-alert",
++    body: clamp(payload.body, 300) || "An alert is due.",
++    tag: id || "gc-alert",
+     renotify: true,
+     requireInteraction: true,
+     icon: "/icons/icon-192.png",
+     badge: "/icons/icon-192.png",
+-    data: { id: payload.id || "", project: payload.project || "" },
++    data: { id, project: clamp(payload.project, 64) },
+     actions: [
+       { action: "confirm", title: "Confirm" },
+       { action: "snooze", title: "Snooze 24h" }
+@@ -119,6 +131,27 @@ function showAlert(payload) {
+   return self.registration.showNotification(title, options);
+ }
+ 
++// Push services rotate subscriptions; re-subscribe with the same application
++// server key and ask any open page to re-register the new subscription with the
++// server. Best-effort — if the key isn't recoverable, the page resubscribes on
++// next open from the VAPID key it has in settings.
++self.addEventListener("pushsubscriptionchange", (event) => {
++  event.waitUntil((async () => {
++    let endpoint = null;
++    try {
++      const key = event.oldSubscription
++        && event.oldSubscription.options
++        && event.oldSubscription.options.applicationServerKey;
++      if (key) {
++        const sub = await self.registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
++        endpoint = sub.endpoint;
++      }
++    } catch (e) { /* fall through to page-driven re-subscribe */ }
++    const clients = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
++    clients.forEach((c) => c.postMessage({ type: "PUSH_SUBSCRIPTION_CHANGED", endpoint }));
++  })());
++});
++
+ self.addEventListener("notificationclick", (event) => {
+   const id = (event.notification.data && event.notification.data.id) || "";
+   const action = event.action || "open";

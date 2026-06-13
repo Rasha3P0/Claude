@@ -16,9 +16,10 @@
 
 ## CURRENT STATE
 
-**Stage:** 1 — GENERATOR
+**Stage:** 2 — REVIEWERS (v1)
 **Iteration:** v1
-**One-line state:** Harness scaffold committed. Beginning Stage 1 implementation.
+**One-line state:** Stage 1 generator complete (Drive OAuth + VAPID push implemented,
+syntax-clean, artifact + decision log written). Next: run 3 blind reviewers.
 
 ---
 
@@ -27,8 +28,8 @@
 | Stage | File(s) | Status |
 |-------|---------|--------|
 | Scaffold | `harness/STATUS.md`, `harness/README.md` | DONE |
-| 1 · Generator (v1) | `harness/artifact_v1/`, `harness/decision_log_v1.md` | IN PROGRESS |
-| 2 · Reviewers (v1) | `harness/review_correctness.md`, `review_adversary.md`, `review_maintainability.md` | pending |
+| 1 · Generator (v1) | `harness/artifact_v1/`, `harness/decision_log_v1.md` | DONE |
+| 2 · Reviewers (v1) | `harness/review_correctness.md`, `review_adversary.md`, `review_maintainability.md` | IN PROGRESS |
 | 3 · Adjudicator (v1) | `harness/change_list_v1.md` OR `harness/final_notes.md` | pending |
 | 1 · Generator (v2) | `harness/artifact_v2/`, `harness/decision_log_v2.md` | (only if ITERATE) |
 | 2 · Reviewers (v2) | … | (only if ITERATE) |
@@ -47,3 +48,9 @@
 
 ## NOTES LOG (append-only, newest last)
 - v1 scaffold: created `harness/`, set Stage 1. Next: implement Drive OAuth + VAPID push.
+- v1 generator DONE: edited index.html (googleDrive + webpush modules, Settings
+  Integrations card, AlertScreen Write-to-Drive), sw.js (payload validation +
+  pushsubscriptionchange, cache v2), new push-server/ (reference VAPID server),
+  README. Self-review fixed a Drive multipart/form-data vs related bug. JSX +
+  sw.js + server.js all syntax-clean. Artifact + decision log written.
+- Next: Stage 2 — 3 blind Sonnet reviewers read only harness/artifact_v1/.
