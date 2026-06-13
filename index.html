@@ -211,6 +211,37 @@
     border-left: 3px solid var(--accent-2); background: var(--surface); }
   .insight .ins-ico { color: var(--accent-2); font-size: 13px; filter: drop-shadow(0 0 6px var(--accent-2)); }
 
+  /* today's focus */
+  .focus { border-left: 3px solid var(--accent-1); }
+  .focus.done { opacity: 0.82; }
+  .focus .focus-text { font-weight: 750; font-size: 17px; letter-spacing: -0.2px; }
+  .focus.done .focus-text { text-decoration: line-through; color: var(--text-secondary); }
+  .focus-opt { width: 100%; justify-content: flex-start; text-align: left; height: auto;
+    min-height: 46px; padding: 11px 14px; font-weight: 600; }
+  .focus-opt:active { border-color: var(--accent-1); }
+
+  /* patterns stat tiles */
+  .statgrid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+  .stat { background: rgba(0,0,0,0.22); border: 1px solid var(--border); border-radius: 13px; padding: 12px 8px; text-align: center; }
+  .stat .bignum { font-size: 24px; }
+  .stat .stat-of { font-size: 13px; color: var(--text-secondary); font-weight: 600; }
+  .stat-lab { font-size: 10px; text-transform: uppercase; letter-spacing: 0.4px; color: var(--text-secondary); margin-top: 3px; }
+  .bignum.grad { background: var(--grad-1); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .corr { padding-left: 14px; position: relative; }
+  .corr::before { content: ""; position: absolute; left: 0; top: 7px; width: 7px; height: 7px; border-radius: 999px; background: var(--accent-2); box-shadow: 0 0 7px var(--accent-2); }
+
+  /* alerts cards */
+  .alertcard { border-left: 3px solid var(--border); transition: transform 120ms ease; }
+  .alertcard:active { transform: scale(0.99); }
+  .alertcard.soon { border-left-color: var(--amber); box-shadow: 0 0 18px rgba(255,178,36,0.18), inset 0 1px 0 rgba(255,255,255,0.04); }
+  .countdown { font-weight: 800; font-size: 17px; font-variant-numeric: tabular-nums; color: var(--text-secondary); }
+  .alertcard.soon .countdown { color: var(--amber); }
+
+  /* settings reorder */
+  .rank { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px;
+    border-radius: 6px; background: var(--grad-1); color: var(--on-accent); font-size: 11px; font-weight: 800; }
+  .top5 .small { font-weight: 700; }
+
   button {
     font-family: inherit; font-size: 15px; cursor: pointer;
     border-radius: 13px; border: 1px solid var(--border);
@@ -483,6 +514,19 @@ const SKINS = [
 const FRICTION_TYPES = ["Fresh veg waste","Curry fatigue","Frozen supply ran out","Batch cook skipped","Partner coordination","Prep time conflict","Other"];
 const VOLUME_BASELINE = 2800;
 
+// Quick wins for the Today's focus picker (analytical, low-friction)
+const FOCUS_OPTIONS = [
+  "Step outside for 10 minutes of daylight",
+  "One 15-minute session — that counts",
+  "Drink a full glass of water now",
+  "Five-minute tidy of one surface",
+  "Protein with the next meal",
+  "Ten push-ups, right now",
+  "Two minutes of stretching",
+  "Walk for five minutes",
+  "Write the one thing that matters today"
+];
+
 /* ============================================================
    DATE + DOMAIN HELPERS
    ============================================================ */
@@ -553,11 +597,36 @@ function getNextFire(m, fromStr) {
   return m.next_fire || m.trigger || fromStr;
 }
 
-/* effective next fire respecting a snooze stored on the milestone */
+/* a one-time date milestone that has been actioned is finished */
+function isMilestoneDone(m) {
+  return m.type === "date" && !!m.last_actioned;
+}
+
+/* effective next fire: respects snooze, and advances past an actioned occurrence.
+   Returns null when a one-time milestone is finished. */
 function effectiveFire(m, fromStr) {
-  const base = getNextFire(m, fromStr);
+  if (isMilestoneDone(m)) return null;
+  // search from today, or the day after the last actioned occurrence (whichever is later)
+  let from = fromStr;
+  if (m.last_actioned) {
+    const d = parseISO(m.last_actioned); d.setDate(d.getDate() + 1);
+    const after = isoDate(d);
+    if (after > from) from = after;
+  }
+  const base = getNextFire(m, from);
   if (m.snooze_until && m.snooze_until > base) return m.snooze_until;
   return base;
+}
+
+/* mark a milestone actioned for its current occurrence and advance it */
+function advanceMilestone(m, occurrence) {
+  const occ = occurrence || todayStr();
+  const next = { ...m, last_actioned: occ, snooze_until: undefined };
+  if (m.type === "recurring_quarterly") {
+    const d = parseISO(occ); d.setMonth(d.getMonth() + 3);
+    next.next_fire = isoDate(d);
+  }
+  return next;
 }
 
 /* ============================================================
@@ -708,6 +777,24 @@ function loadAlertLogs() {
   return store.keys().filter(k => k.startsWith("alert_log_")).map(k => store.get(k)).filter(Boolean)
     .sort((a,b)=> (b.timestamp||"").localeCompare(a.timestamp||""));
 }
+/* one combined dump of everything for export/import */
+function buildExportDump() {
+  return {
+    gc_settings: store.get("gc_settings"),
+    logs: store.keys().filter(k=>k.startsWith("log_")).reduce((o,k)=>{ o[k]=store.get(k); return o; }, {}),
+    milestones: loadMilestones(),
+    alert_logs: store.keys().filter(k=>k.startsWith("alert_log_")).reduce((o,k)=>{ o[k]=store.get(k); return o; }, {})
+  };
+}
+/* reorder an object's keys (used to move exercises in the volume map) */
+function reorderKeys(obj, name, dir) {
+  const keys = Object.keys(obj);
+  const i = keys.indexOf(name);
+  const j = i + dir;
+  if (i < 0 || j < 0 || j >= keys.length) return obj;
+  keys.splice(j, 0, keys.splice(i, 1)[0]);
+  const out = {}; keys.forEach(k => { out[k] = obj[k]; }); return out;
+}
 
 /* ============================================================
    SMALL UI PRIMITIVES
@@ -809,7 +896,7 @@ function Ring({ label, value, target, unit, color, done }) {
 
 /* consecutive logged days ending today (or yesterday if today not yet logged) */
 function dayCounts(log) {
-  return !!log && (hasWorkout(log) || log.water_hit || (log.diet && log.diet.protein_estimate_g > 0));
+  return !!log && (hasWorkout(log) || log.water_hit || log.focus_done || (log.diet && log.diet.protein_estimate_g > 0));
 }
 function computeStreak(logs, today) {
   let streak = 0;
@@ -940,10 +1027,12 @@ function App() {
     return () => { timers.current.forEach(t => clearTimeout(t)); };
   }, [milestones, today]);
 
-  /* upcoming milestones sorted by next fire */
+  /* upcoming milestones sorted by next fire (finished one-time alerts drop off) */
   const upcoming = useMemo(() => {
     return milestones
-      .map(m => ({ m, fire: effectiveFire(m, today), days: daysBetween(today, effectiveFire(m, today)) }))
+      .map(m => ({ m, fire: effectiveFire(m, today) }))
+      .filter(x => x.fire)
+      .map(x => ({ ...x, days: daysBetween(today, x.fire) }))
       .sort((a,b) => a.fire.localeCompare(b.fire));
   }, [milestones, today]);
 
@@ -1035,8 +1124,11 @@ function Nav({ tab, setTab, pending7 }) {
    TODAY TAB (Module 3)
    ============================================================ */
 /* Fast single-set logger — log to today's workout without leaving Today */
-function QuickSetSheet({ todayLog, settings, saveLog, celebrate, onClose }) {
-  const names = Object.keys(settings.volumeMap);
+function QuickSetSheet({ todayLog, settings, saveLog, logs, celebrate, onClose }) {
+  // chips ordered by how often you log each exercise (most-used first)
+  const usage = {};
+  Object.values(logs || {}).forEach(l => (l.workout?.exercises || []).forEach(e => { usage[e.name] = (usage[e.name]||0) + 1; }));
+  const names = Object.keys(settings.volumeMap).sort((a,b) => (usage[b]||0) - (usage[a]||0));
   const defW = (n) => n === "Push-ups" ? Math.round((settings.bodyWeight||0)*0.5) : (settings.volumeMap[n] != null ? settings.volumeMap[n] : 0);
   const [name, setName] = useState(names[0] || "");
   const [weight, setWeight] = useState(String(defW(names[0] || "")));
@@ -1077,6 +1169,51 @@ function QuickSetSheet({ todayLog, settings, saveLog, celebrate, onClose }) {
         </button>
         <p className="tiny muted mt8" style={{textAlign:"center"}}>Adds to today's workout. Add another or tap Done.</p>
       </div>
+    </div>
+  );
+}
+
+/* Today's focus — pick a quick win from a list or type your own, then bank it */
+function FocusCard({ todayLog, saveLog, celebrate }) {
+  const [picking, setPicking] = useState(false);
+  const [custom, setCustom] = useState("");
+  const choose = (text) => { haptic(8); saveLog({ ...todayLog, focus: text, focus_done: false }); setPicking(false); setCustom(""); };
+  const toggleDone = () => {
+    const done = !todayLog.focus_done;
+    saveLog({ ...todayLog, focus_done: done });
+    if (done) { haptic([12,40,12]); celebrate && celebrate({ title: "Quick win", sub: todayLog.focus }); }
+  };
+
+  if (picking || !todayLog.focus) {
+    return (
+      <div className="card focus-pick">
+        <div className="row between">
+          <h3>Today's focus</h3>
+          {todayLog.focus && <button className="ghost sm" onClick={()=>setPicking(false)}>Cancel</button>}
+        </div>
+        <p className="tiny muted mt8">Pick one quick win, or write your own.</p>
+        <div className="col mt12" style={{gap:8}}>
+          {FOCUS_OPTIONS.map(o => (
+            <button key={o} className="focus-opt" onClick={()=>choose(o)}>{o}</button>
+          ))}
+        </div>
+        <div className="row mt12" style={{gap:8}}>
+          <input className="grow" placeholder="or type your own" value={custom} onChange={e=>setCustom(e.target.value)} />
+          <button className="sm" disabled={!custom.trim()} onClick={()=>choose(custom.trim())}>Set</button>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className={"card focus" + (todayLog.focus_done ? " done" : "")}>
+      <div className="row between">
+        <h3>Today's focus</h3>
+        <button className="ghost sm" onClick={()=>setPicking(true)}>Change</button>
+      </div>
+      <p className="mt8 focus-text">{todayLog.focus}</p>
+      <button className={"block mt12 " + (todayLog.focus_done ? "" : "primary")} onClick={toggleDone}>
+        {todayLog.focus_done ? "✓ Done — tap to undo" : "Mark done"}
+      </button>
     </div>
   );
 }
@@ -1144,6 +1281,9 @@ function TodayTab({ settings, week, today, todayLog, saveLog, logs, celebrate, n
         )}
       </div>
 
+      {/* Today's focus — quick win */}
+      <FocusCard todayLog={todayLog} saveLog={saveLog} celebrate={celebrate} />
+
       {/* Today's progress — hero rings */}
       <div className="card">
         <h3>Today's progress</h3>
@@ -1198,7 +1338,7 @@ function TodayTab({ settings, week, today, todayLog, saveLog, logs, celebrate, n
       </div>
 
       {sheetOpen && (
-        <QuickSetSheet todayLog={todayLog} settings={settings} saveLog={saveLog}
+        <QuickSetSheet todayLog={todayLog} settings={settings} saveLog={saveLog} logs={logs}
           celebrate={celebrate} onClose={()=>setSheetOpen(false)} />
       )}
     </div>
@@ -1235,20 +1375,25 @@ function AlertsTab({ milestones, upcoming, alertLogs, setAlertOpen, today }) {
 
       {!hist && (
         <div>
-          {upcoming.length === 0 && <p className="muted small">No milestones configured.</p>}
-          {upcoming.map(({m, fire, days}) => (
-            <button key={m.id} className="card block" style={{textAlign:"left",display:"block",height:"auto",padding:14}}
-              onClick={()=>setAlertOpen({ milestone: m })}>
-              <div className="row between">
-                <span className="badge project">{m.project}</span>
-                <span className="small mono" style={{color: days<=7 ? "var(--amber)":"var(--text-secondary)"}}>
-                  {days < 0 ? "overdue" : days === 0 ? "today" : `${days}d · ${shortDate(fire)}`}
-                </span>
-              </div>
-              <div className="mt8" style={{fontWeight:600}}>{m.name}</div>
-              <div className="small muted mt8" style={{display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{m.action}</div>
-            </button>
-          ))}
+          {upcoming.length === 0 && <p className="muted small">Nothing upcoming — all clear.</p>}
+          {upcoming.map(({m, fire, days}) => {
+            const soon = days <= 7;
+            return (
+              <button key={m.id} className={"card block alertcard" + (soon ? " soon" : "")}
+                style={{textAlign:"left",display:"block",height:"auto",padding:14}}
+                onClick={()=>setAlertOpen({ milestone: m })}>
+                <div className="row between">
+                  <span className="badge project">{m.project}</span>
+                  <span className="countdown">{days < 0 ? "overdue" : days === 0 ? "today" : `${days}d`}</span>
+                </div>
+                <div className="mt8" style={{fontWeight:700,fontSize:15}}>{m.name}</div>
+                <div className="row between mt8">
+                  <span className="small muted" style={{display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden",marginRight:8}}>{m.action}</span>
+                  <span className="tiny muted mono" style={{whiteSpace:"nowrap"}}>{shortDate(fire)}</span>
+                </div>
+              </button>
+            );
+          })}
         </div>
       )}
 
@@ -1299,15 +1444,18 @@ function AlertScreen({ milestone: m, settings, recordAlert, saveMilestone, celeb
       `**Timestamp:** ${now.toISOString()}\n`;
   };
 
+  const occurrence = effectiveFire(m, todayStr());
   const doConfirm = () => {
     const text = note.trim() || "confirmed as per action description";
     recordAlert({ id:m.id, name:m.name, project:m.project, response:"Confirmed", note:text, timestamp:new Date().toISOString() });
+    saveMilestone(advanceMilestone(m, occurrence));   // advance / retire so it leaves the upcoming list
     setResponse("Confirmed");
     setMode("drive");
     celebrate && celebrate({ title: "Action confirmed", sub: m.project });
   };
   const doDismiss = () => {
     recordAlert({ id:m.id, name:m.name, project:m.project, response:"Dismissed", note:reason.trim()||"not applicable", timestamp:new Date().toISOString() });
+    saveMilestone(advanceMilestone(m, occurrence));
     setResponse("Dismissed");
     setMode("drive");
   };
@@ -1415,9 +1563,9 @@ function LogTab({ settings, today, saveLog, saveSettings, logs, celebrate, setTa
 
 function DayEditor({ date, base, settings, saveLog, saveSettings, logs, today, celebrate, setTab, isPast }) {
   const map = settings.volumeMap;
-  // Pre-filled rows come from the exercise volume map, so anything added in
-  // Settings shows up here ready to log.
-  const exerciseNames = Object.keys(map);
+  const allNames = Object.keys(map);
+  // Pre-filled rows are the top 5 (reorder in Settings); the rest are one tap away.
+  const topNames = allNames.slice(0, 5);
   // Default working weight: push-ups = 50% body weight, everything else the map.
   const defWeight = (name) => name === "Push-ups"
     ? Math.round((Number(settings.bodyWeight)||0) * 0.5)
@@ -1433,11 +1581,16 @@ function DayEditor({ date, base, settings, saveLog, saveSettings, logs, today, c
   };
   const initExercises = () => {
     const saved = base.workout?.exercises || [];
-    const rows = exerciseNames.map(n => ({ name: n, sets: toSets(saved.find(e => e.name === n), n) }));
-    saved.filter(e => !exerciseNames.includes(e.name)).forEach(e => rows.push({ name: e.name, sets: toSets(e, e.name) }));
-    return rows;
+    const shown = topNames.slice();
+    saved.forEach(e => { if (!shown.includes(e.name)) shown.push(e.name); });  // keep anything already logged
+    return shown.map(n => ({ name: n, sets: toSets(saved.find(e => e.name === n), n) }));
   };
   const [rows, setRows] = useState(initExercises);
+  const addExerciseRow = (name) => {
+    if (rows.some(r => r.name === name)) return;
+    haptic(8);
+    setRows([...rows, { name, sets: [{ weight: String(defWeight(name)), reps: "" }] }]);
+  };
   const [life, setLife] = useState(() => (base.workout?.life_volume || []).map(l => ({...l})));
   const [bw, setBw] = useState(settings.bodyWeight);
   const [editBw, setEditBw] = useState(false);
@@ -1561,9 +1714,19 @@ function DayEditor({ date, base, settings, saveLog, saveSettings, logs, today, c
             </div>
           ))}
         </div>
+        {allNames.filter(n => !rows.some(r => r.name === n)).length > 0 && (
+          <div className="mt12">
+            <div className="tiny muted mb8">Add from your exercises</div>
+            <div className="row wrap" style={{gap:6}}>
+              {allNames.filter(n => !rows.some(r => r.name === n)).map(n => (
+                <button key={n} className="chip" onClick={()=>addExerciseRow(n)}>+ {n}</button>
+              ))}
+            </div>
+          </div>
+        )}
         <hr className="divider" />
         <div className="row" style={{gap:6}}>
-          <input className="grow" placeholder="exercise name" value={newExName} onChange={e=>setNewExName(e.target.value)} />
+          <input className="grow" placeholder="new exercise" value={newExName} onChange={e=>setNewExName(e.target.value)} />
           <input style={{width:60}} inputMode="decimal" placeholder="kg" value={newExWeight} onChange={e=>setNewExWeight(e.target.value.replace(/[^0-9.]/g,""))} />
           <input style={{width:56}} inputMode="numeric" placeholder="reps" value={newExReps} onChange={e=>setNewExReps(e.target.value.replace(/[^0-9]/g,""))} />
           <button className="sm" onClick={addCustomEx}>Add</button>
@@ -1742,15 +1905,15 @@ function PatternsTab({ settings, logs, today }) {
     <div>
       <h1 className="mb8">Patterns</h1>
 
-      <div className="card">
+      <div className="card hero">
         <h3>This month</h3>
-        <div className="row wrap mt12" style={{gap:8}}>
-          <span className="pill"><span className="lab">Volume</span> {Math.round(mVol)}kg</span>
-          <span className="pill"><span className="lab">Sessions</span> {mSessions}</span>
-          <span className="pill"><span className="lab">Protein/wk</span> {mProteinWeekAvg}g</span>
-          <span className="pill"><span className="lab">Friction</span> {mFriction}</span>
-          <span className="pill"><span className="lab">Water</span> {mWater}/{monthLogs.length}d</span>
-          <span className="pill"><span className="lab">Energy</span> {mEnergy.toFixed(1)}/5</span>
+        <div className="statgrid mt12">
+          <div className="stat"><div className="bignum grad">{Math.round(mVol)}</div><div className="stat-lab">volume kg</div></div>
+          <div className="stat"><div className="bignum">{mSessions}</div><div className="stat-lab">sessions</div></div>
+          <div className="stat"><div className="bignum">{mProteinWeekAvg}</div><div className="stat-lab">protein/wk</div></div>
+          <div className="stat"><div className="bignum">{mEnergy.toFixed(1)}</div><div className="stat-lab">avg energy</div></div>
+          <div className="stat"><div className="bignum">{mWater}<span className="stat-of">/{monthLogs.length}</span></div><div className="stat-lab">water days</div></div>
+          <div className="stat"><div className="bignum">{mFriction}</div><div className="stat-lab">friction</div></div>
         </div>
       </div>
 
@@ -1783,11 +1946,11 @@ function PatternsTab({ settings, logs, today }) {
         <h3>Correlations</h3>
         {!enoughData && <p className="muted small mt8">Patterns appear after 4 weeks of logging. Keep going.</p>}
         {enoughData && corr && (
-          <div className="col mt8 small" style={{gap:8}}>
-            <p>HIGH weeks averaged {corr.highAvg}% of volume target.</p>
-            <p>Weeks with diet friction: {corr.diff}% lower volume than friction-free weeks.</p>
-            <p>Days water was hit: avg energy {corr.wE}/5. Days it wasn't: {corr.nE}/5.</p>
-            <p>Estrodot on + energy ≤ 2: {corr.estPct}% of Estrodot days.</p>
+          <div className="col mt8 small" style={{gap:10}}>
+            <p className="corr">HIGH weeks averaged {corr.highAvg}% of volume target.</p>
+            <p className="corr">Weeks with diet friction: {corr.diff}% lower volume than friction-free weeks.</p>
+            <p className="corr">Days water was hit: avg energy {corr.wE}/5. Days it wasn't: {corr.nE}/5.</p>
+            <p className="corr">Estrodot on + energy ≤ 2: {corr.estPct}% of Estrodot days.</p>
           </div>
         )}
       </div>
@@ -1795,7 +1958,7 @@ function PatternsTab({ settings, logs, today }) {
       <div className="card">
         <h3>Export</h3>
         <div className="col mt12">
-          <button className="block" onClick={async()=>{ const ok = await copyText(JSON.stringify(allLogs,null,2)); setCopyMsg(ok?"Data copied as JSON":"Copy failed"); }}>Copy data as JSON</button>
+          <button className="primary block" onClick={async()=>{ const ok = await copyText(JSON.stringify(buildExportDump(),null,2)); setCopyMsg(ok?"Everything copied — settings, logs, milestones, alerts":"Copy failed"); }}>Copy everything (JSON)</button>
           <button className="block" onClick={async()=>{ const ok = await copyText(summaryMd); setCopyMsg(ok?"Weekly summary copied":"Copy failed"); }}>Copy weekly summary</button>
           {copyMsg && <p className="tiny muted">{copyMsg}</p>}
         </div>
@@ -1837,13 +2000,7 @@ function SettingsTab({ settings, saveSettings, milestones, saveMilestone, delete
   const [editM, setEditM] = useState(null);
 
   const exportAll = async () => {
-    const dump = {
-      gc_settings: settings,
-      logs: store.keys().filter(k=>k.startsWith("log_")).reduce((o,k)=>{o[k]=store.get(k);return o;},{}),
-      milestones: milestones,
-      alert_logs: store.keys().filter(k=>k.startsWith("alert_log_")).reduce((o,k)=>{o[k]=store.get(k);return o;},{})
-    };
-    const ok = await copyText(JSON.stringify(dump,null,2));
+    const ok = await copyText(JSON.stringify(buildExportDump(), null, 2));
     setMsg(ok?"All data copied":"Copy failed"); setTimeout(()=>setMsg(""),1500);
   };
   const importAll = () => {
@@ -1898,13 +2055,19 @@ function SettingsTab({ settings, saveSettings, milestones, saveMilestone, delete
       </div>
 
       <div className="card">
-        <h3>Exercise volume map (kg/rep)</h3>
-        <div className="col mt12" style={{gap:8}}>
-          {Object.entries(mapState).map(([name,val])=>(
-            <div key={name} className="row between">
-              <span className="small">{name}</span>
-              <span className="row" style={{gap:6}}>
-                <input style={{width:70}} inputMode="numeric" value={val} onChange={e=>saveMap({...mapState,[name]:Number(e.target.value.replace(/[^0-9.]/g,""))||0})} />
+        <h3>Exercises (kg/rep)</h3>
+        <p className="tiny muted mt8">The top 5 pre-fill your workout log. Reorder to choose them.</p>
+        <div className="col mt12" style={{gap:6}}>
+          {Object.entries(mapState).map(([name,val],idx)=>(
+            <div key={name} className={"row between" + (idx < 5 ? " top5" : "")} style={{padding:"4px 0"}}>
+              <span className="row" style={{gap:8}}>
+                {idx < 5 && <span className="rank">{idx+1}</span>}
+                <span className="small">{name}</span>
+              </span>
+              <span className="row" style={{gap:4}}>
+                <button className="sm ghost" disabled={idx===0} onClick={()=>saveMap(reorderKeys(mapState,name,-1))}>↑</button>
+                <button className="sm ghost" disabled={idx===Object.keys(mapState).length-1} onClick={()=>saveMap(reorderKeys(mapState,name,1))}>↓</button>
+                <input style={{width:58}} inputMode="numeric" value={val} onChange={e=>saveMap({...mapState,[name]:Number(e.target.value.replace(/[^0-9.]/g,""))||0})} />
                 <button className="sm ghost" onClick={()=>{ const n={...mapState}; delete n[name]; saveMap(n); }}>✗</button>
               </span>
             </div>
