@@ -37,7 +37,71 @@
     --grad-blue: linear-gradient(135deg, #6fc0ff, #2f7bff);
     --grad-high: linear-gradient(135deg, #ff8a5c, #f8434a);
     --grad-amber: linear-gradient(135deg, #ffce5c, #ff9a1f);
+
+    /* semantic accents — overridden per skin (default = Hot Pink) */
+    --accent-1: #ff4fb0; --accent-2: #c792ff; --accent-3: #5cd6ff;
+    --grad-1: linear-gradient(135deg, #ff7ad0, #ff1f8f);
+    --grad-2: linear-gradient(135deg, #cf9bff, #7a4bff);
+    --grad-3: linear-gradient(135deg, #86e6ff, #2f8bff);
+    --glow-1: rgba(255,31,143,0.5);
+    --glow-a: rgba(255,31,143,0.13); --glow-b: rgba(199,146,255,0.10);
+    --on-accent: #2a0716;
   }
+
+  /* ---- skins ---- */
+  .app[data-skin="hotpink"] {
+    --accent-1: #ff4fb0; --accent-2: #c792ff; --accent-3: #5cd6ff;
+    --grad-1: linear-gradient(135deg, #ff7ad0, #ff1f8f);
+    --grad-2: linear-gradient(135deg, #cf9bff, #7a4bff);
+    --grad-3: linear-gradient(135deg, #86e6ff, #2f8bff);
+    --glow-1: rgba(255,31,143,0.5); --glow-a: rgba(255,31,143,0.14); --glow-b: rgba(199,146,255,0.10);
+    --on-accent: #2a0716;
+  }
+  .app[data-skin="vapor"] {
+    --accent-1: #ff5fd0; --accent-2: #9b8cff; --accent-3: #3fe8e0;
+    --grad-1: linear-gradient(135deg, #ff8ae0, #ff2db0);
+    --grad-2: linear-gradient(135deg, #b4a6ff, #6a5bff);
+    --grad-3: linear-gradient(135deg, #7ff5ee, #23c7c0);
+    --glow-1: rgba(255,45,176,0.46); --glow-a: rgba(255,45,176,0.14); --glow-b: rgba(63,232,224,0.11);
+    --on-accent: #220a2a;
+  }
+  .app[data-skin="sunset"] {
+    --accent-1: #ff7a8a; --accent-2: #ffb24b; --accent-3: #ff5fb0;
+    --grad-1: linear-gradient(135deg, #ff9a6b, #ff3d7a);
+    --grad-2: linear-gradient(135deg, #ffd166, #ff9a1f);
+    --grad-3: linear-gradient(135deg, #ff9ad6, #ff2d95);
+    --glow-1: rgba(255,61,122,0.46); --glow-a: rgba(255,90,80,0.14); --glow-b: rgba(255,178,75,0.10);
+    --on-accent: #2a0a10;
+  }
+  .app[data-skin="mint"] {
+    --accent-1: #3fe07a; --accent-2: #42e8e0; --accent-3: #5cb6ff;
+    --grad-1: linear-gradient(135deg, #4dffa0, #16b65f);
+    --grad-2: linear-gradient(135deg, #7ff5ee, #23c7c0);
+    --grad-3: linear-gradient(135deg, #6fc0ff, #2f7bff);
+    --glow-1: rgba(63,224,122,0.44); --glow-a: rgba(63,224,122,0.11); --glow-b: rgba(66,232,224,0.09);
+    --on-accent: #042713;
+  }
+  .app[data-skin="mission"] {
+    --accent-1: #3fb950; --accent-2: #bc8cff; --accent-3: #58a6ff;
+    --grad-1: linear-gradient(135deg, #3fb950, #2ea043);
+    --grad-2: linear-gradient(135deg, #bc8cff, #8957e5);
+    --grad-3: linear-gradient(135deg, #58a6ff, #388bfd);
+    --glow-1: rgba(63,185,80,0.34); --glow-a: rgba(63,185,80,0.07); --glow-b: rgba(88,166,255,0.05);
+    --on-accent: #04140a;
+  }
+
+  /* skin swatches in settings */
+  .skin-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+  .skin-sw {
+    position: relative; min-height: 56px; border-radius: 13px; border: 2px solid var(--border);
+    color: #fff; font-weight: 800; font-size: 14px; padding: 0 12px;
+    display: flex; align-items: center; justify-content: flex-start;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.5); cursor: pointer;
+    transition: transform 120ms cubic-bezier(.2,.8,.3,1.3), border-color 120ms ease;
+  }
+  .skin-sw:active { transform: scale(0.96); }
+  .skin-sw.on { border-color: #fff; box-shadow: 0 0 0 3px rgba(255,255,255,0.18); }
+  .skin-sw .tick { position: absolute; top: 7px; right: 9px; font-size: 14px; }
 
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body {
@@ -48,11 +112,7 @@
     line-height: 1.45;
     -webkit-font-smoothing: antialiased;
     overscroll-behavior-y: none;
-    background:
-      radial-gradient(130% 55% at 50% -8%, rgba(63,224,122,0.07), transparent 60%),
-      radial-gradient(90% 50% at 105% 4%, rgba(199,146,255,0.06), transparent 55%),
-      var(--bg);
-    background-attachment: fixed;
+    background: var(--bg);
   }
   #root { min-height: 100vh; }
 
@@ -61,6 +121,12 @@
     margin: 0 auto;
     min-height: 100vh;
     position: relative;
+  }
+  .app::before {
+    content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+    background:
+      radial-gradient(130% 55% at 50% -8%, var(--glow-a), transparent 60%),
+      radial-gradient(90% 50% at 105% 4%, var(--glow-b), transparent 55%);
   }
   .content {
     padding: 16px 14px calc(80px + env(safe-area-inset-bottom));
@@ -136,9 +202,9 @@
     transition: transform 120ms cubic-bezier(.2,.8,.3,1.3), filter 120ms ease, box-shadow 200ms ease;
   }
   button:active { transform: scale(0.95); }
-  button.primary { background: var(--grad-low); color: #042713; border: 0; font-weight: 800;
-    box-shadow: 0 6px 22px rgba(63,224,122,0.4), inset 0 1px 0 rgba(255,255,255,0.3); }
-  button.primary:active { box-shadow: 0 3px 12px rgba(63,224,122,0.5); }
+  button.primary { background: var(--grad-1); color: var(--on-accent); border: 0; font-weight: 800;
+    box-shadow: 0 6px 22px var(--glow-1), inset 0 1px 0 rgba(255,255,255,0.3); }
+  button.primary:active { box-shadow: 0 3px 12px var(--glow-1); }
   button.block { width: 100%; }
   button.ghost { background: transparent; }
   button.danger { background: rgba(255,93,84,0.14); color: var(--high); border-color: rgba(255,93,84,0.5); }
@@ -162,10 +228,10 @@
     background: var(--bg-2); color: var(--text-secondary); font-weight: 700;
   }
   .seg button.on { background: var(--surface-3); color: var(--text-primary); border-color: var(--border); }
-  .seg button.on.yes { background: var(--grad-low); color: #042713; border: 0; box-shadow: 0 4px 16px rgba(63,224,122,0.35); }
+  .seg button.on.yes { background: var(--grad-1); color: var(--on-accent); border: 0; box-shadow: 0 4px 16px var(--glow-1); }
   .seg button.on.no { background: var(--grad-high); color: #fff; border: 0; box-shadow: 0 4px 16px rgba(248,67,74,0.3); }
-  .seg button.on.energy { background: var(--grad-blue); color: #04121f; border: 0; box-shadow: 0 4px 16px rgba(92,182,255,0.35); }
-  .seg button.on.health { background: var(--grad-purple); color: #120726; border: 0; box-shadow: 0 4px 16px rgba(199,146,255,0.35); }
+  .seg button.on.energy { background: var(--grad-3); color: #fff; border: 0; box-shadow: 0 4px 16px rgba(0,0,0,0.25); }
+  .seg button.on.health { background: var(--grad-2); color: #fff; border: 0; box-shadow: 0 4px 16px rgba(0,0,0,0.25); }
 
   /* hero progress rings */
   .rings { display: flex; justify-content: space-around; gap: 6px; }
@@ -283,19 +349,19 @@
   .reward {
     position: fixed; inset: 0; z-index: 80; overflow: hidden;
     display: flex; align-items: center; justify-content: center;
-    background: radial-gradient(circle at 50% 42%, rgba(63,224,122,0.2), rgba(9,12,18,0.88));
+    background: radial-gradient(circle at 50% 42%, var(--glow-1), rgba(9,12,18,0.9));
     backdrop-filter: blur(3px); animation: fade 200ms ease;
   }
   .reward-card { text-align: center; transform: scale(0.4); opacity: 0; animation: pop 520ms cubic-bezier(.2,1.5,.4,1) forwards; }
   @keyframes pop { to { transform: scale(1); opacity: 1; } }
   .checkmark {
     width: 88px; height: 88px; border-radius: 50%; margin: 0 auto 16px;
-    background: var(--grad-low); color: #042713; font-size: 46px; font-weight: 900;
+    background: var(--grad-1); color: var(--on-accent); font-size: 46px; font-weight: 900;
     display: flex; align-items: center; justify-content: center;
-    box-shadow: 0 0 46px rgba(63,224,122,0.65);
+    box-shadow: 0 0 46px var(--glow-1);
   }
   .reward-title { font-size: 22px; font-weight: 800; letter-spacing: -0.4px; }
-  .reward-sub { font-size: 15px; color: var(--low); font-weight: 800; margin-top: 5px; }
+  .reward-sub { font-size: 15px; color: var(--accent-1); font-weight: 800; margin-top: 5px; }
   .confetti { position: absolute; top: -16px; width: 9px; height: 15px; border-radius: 2px; animation: fall linear forwards; }
   @keyframes fall { to { transform: translateY(112vh) rotate(760deg); opacity: 0.15; } }
 </style>
@@ -375,8 +441,17 @@ const DEFAULT_SETTINGS = {
   volumeMap: DEFAULT_VOLUME_MAP,
   stressCalendar: DEFAULT_CALENDAR,
   notifPermission: "default",
-  notifAsked: false
+  notifAsked: false,
+  theme: "hotpink"
 };
+
+const SKINS = [
+  { id:"hotpink", label:"Hot Pink", c:["#ff7ad0","#ff1f8f"] },
+  { id:"vapor",   label:"Vaporwave", c:["#ff8ae0","#23c7c0"] },
+  { id:"sunset",  label:"Sunset", c:["#ff9a6b","#ff3d7a"] },
+  { id:"mint",    label:"Neon Mint", c:["#4dffa0","#23c7c0"] },
+  { id:"mission", label:"Mission", c:["#3fb950","#388bfd"] }
+];
 
 const FRICTION_TYPES = ["Fresh veg waste","Curry fatigue","Frozen supply ran out","Batch cook skipped","Partner coordination","Prep time conflict","Other"];
 const VOLUME_BASELINE = 2800;
@@ -800,7 +875,7 @@ function App() {
   const ctxBundle = { settings, week, today, logs, milestones, alertLogs, saveSettings, saveLog, saveMilestone, deleteMilestone, recordAlert, setTab, setAlertOpen, celebrate };
 
   return (
-    <div className="app" style={{ "--active": activeColor }}>
+    <div className="app" data-skin={settings.theme || "hotpink"} style={{ "--active": activeColor }}>
       <div className="content">
         {showIntro && (
           <IntroCard onEnable={requestPerms} onSkip={dismissIntro} />
@@ -921,9 +996,9 @@ function TodayTab({ settings, week, today, todayLog, saveLog, logs, nextAlert, s
       <div className="card">
         <h3>Today's progress</h3>
         <div className="rings mt12">
-          <Ring label="Volume" value={volToday} target={volTargetDay} unit="kg" color="var(--low)" />
-          <Ring label="Protein" value={proToday} target={proTargetDay} unit="g" color="var(--purple)" />
-          <Ring label="Water" done={todayLog.water_hit} color="var(--blue)" />
+          <Ring label="Volume" value={volToday} target={volTargetDay} unit="kg" color="var(--accent-1)" />
+          <Ring label="Protein" value={proToday} target={proTargetDay} unit="g" color="var(--accent-2)" />
+          <Ring label="Water" done={todayLog.water_hit} color="var(--accent-3)" />
         </div>
       </div>
 
@@ -1145,13 +1220,42 @@ function AlertScreen({ milestone: m, settings, recordAlert, saveMilestone, celeb
 /* ============================================================
    LOG TAB (Module 4)
    ============================================================ */
-function LogTab({ settings, week, today, todayLog, saveLog, saveSettings, logs, celebrate, setTab }) {
+function LogTab({ settings, today, saveLog, saveSettings, logs, celebrate, setTab }) {
+  const [logDate, setLogDate] = useState(today);
+  const isPast = logDate !== today;
+  const wt = weekTypeFor(logDate, settings.stressCalendar);
+  const base = logs[logDate] || emptyLog(logDate, wt.type);
+  const existing = !!logs[logDate];
+
+  return (
+    <div>
+      <div className="row between mb8">
+        <h1>Log</h1>
+        <span className={"badge " + wt.type}>{wt.type}</span>
+      </div>
+      <div className="card" style={{padding:"12px 14px"}}>
+        <label className="field">Logging for
+          <input type="date" max={today} value={logDate} onChange={e=>setLogDate(e.target.value || today)} />
+        </label>
+        <p className="tiny muted mt8">
+          {dayName(logDate)} · {prettyDate(logDate)}
+          {isPast ? (existing ? " · editing a saved past day" : " · backfilling a past day") : " · today"}
+        </p>
+      </div>
+      <DayEditor key={logDate} date={logDate} base={base} settings={settings}
+        saveLog={saveLog} saveSettings={saveSettings} logs={logs} today={today}
+        celebrate={celebrate} setTab={setTab} isPast={isPast} />
+    </div>
+  );
+}
+
+function DayEditor({ date, base, settings, saveLog, saveSettings, logs, today, celebrate, setTab, isPast }) {
   const map = settings.volumeMap;
   const baseNames = ["Deadlifts","OH Press","Squats","Push-ups","KB Swings"];
 
-  // Initialise editable draft from the saved day.
+  // Initialise editable draft from the selected day.
   const initExercises = () => {
-    const saved = todayLog.workout?.exercises || [];
+    const saved = base.workout?.exercises || [];
     const rows = baseNames.map(n => {
       const f = saved.find(e => e.name === n);
       return { name: n, reps: f ? String(f.reps) : "" };
@@ -1160,19 +1264,19 @@ function LogTab({ settings, week, today, todayLog, saveLog, saveSettings, logs, 
     return rows;
   };
   const [rows, setRows] = useState(initExercises);
-  const [life, setLife] = useState(() => (todayLog.workout?.life_volume || []).map(l => ({...l})));
+  const [life, setLife] = useState(() => (base.workout?.life_volume || []).map(l => ({...l})));
   const [bw, setBw] = useState(settings.bodyWeight);
   const [editBw, setEditBw] = useState(false);
-  const [protein, setProtein] = useState(todayLog.diet?.protein_estimate_g ? String(todayLog.diet.protein_estimate_g) : "");
-  const [friction, setFriction] = useState(!!todayLog.diet?.friction_hit);
-  const [frictionType, setFrictionType] = useState(todayLog.diet?.friction_type || "");
-  const [energy, setEnergy] = useState(todayLog.energy);
-  const [water, setWater] = useState(todayLog.water_hit);
-  const [elvanse, setElvanse] = useState(todayLog.elvanse_taken);
-  const [estrodot, setEstrodot] = useState(todayLog.estrodot_on);
-  const [sunlight, setSunlight] = useState(todayLog.sunlight || "");
-  const [stress, setStress] = useState(todayLog.work?.stress_felt || 3);
-  const [notes, setNotes] = useState(todayLog.work?.note || "");
+  const [protein, setProtein] = useState(base.diet?.protein_estimate_g ? String(base.diet.protein_estimate_g) : "");
+  const [friction, setFriction] = useState(!!base.diet?.friction_hit);
+  const [frictionType, setFrictionType] = useState(base.diet?.friction_type || "");
+  const [energy, setEnergy] = useState(base.energy);
+  const [water, setWater] = useState(base.water_hit);
+  const [elvanse, setElvanse] = useState(base.elvanse_taken);
+  const [estrodot, setEstrodot] = useState(base.estrodot_on);
+  const [sunlight, setSunlight] = useState(base.sunlight || "");
+  const [stress, setStress] = useState(base.work?.stress_felt || 3);
+  const [notes, setNotes] = useState(base.work?.note || "");
 
   // custom exercise / life inputs
   const [newExName, setNewExName] = useState("");
@@ -1209,7 +1313,7 @@ function LogTab({ settings, week, today, todayLog, saveLog, saveSettings, logs, 
       .map(r => ({ name:r.name, reps:Number(r.reps), volume_kg: repVol(r.name, r.reps) }));
     const total = exercises.reduce((s,e)=>s+e.volume_kg,0) + lifeTotal;
     const log = {
-      date: today,
+      date: date,
       energy, water_hit: water, elvanse_taken: elvanse, estrodot_on: estrodot, sunlight,
       workout: { exercises, life_volume: life, total_kg: total },
       diet: { protein_estimate_g: Number(protein)||0, friction_hit: friction, friction_type: friction ? (frictionType||null) : null },
@@ -1217,15 +1321,16 @@ function LogTab({ settings, week, today, todayLog, saveLog, saveSettings, logs, 
     };
     saveLog(log);
     if (Number(bw) && Number(bw) !== settings.bodyWeight) saveSettings({ ...settings, bodyWeight: Number(bw) });
-    const streak = computeStreak({ ...(logs || {}), [today]: log }, today);
-    setTab("today");
-    celebrate && celebrate({ title: "Day logged", sub: streak > 0 ? `${streak} day streak` : "streak started" });
+    const streak = computeStreak({ ...(logs || {}), [date]: log }, today);
+    setTab(isPast ? "patterns" : "today");
+    celebrate && celebrate({
+      title: isPast ? "Past day saved" : "Day logged",
+      sub: isPast ? prettyDate(date) : (streak > 0 ? `${streak} day streak` : "streak started")
+    });
   };
 
   return (
     <div>
-      <h1 className="mb8">Log — {shortDate(today)}</h1>
-
       {/* Workout */}
       <div className="card">
         <div className="row between">
@@ -1286,7 +1391,7 @@ function LogTab({ settings, week, today, todayLog, saveLog, saveSettings, logs, 
               <div key={i} className="row between small">
                 <span>{l.name} <span className="muted">({l.weight_kg}kg × {l.reps})</span></span>
                 <span className="row" style={{gap:8}}>
-                  <span className="mono" style={{color:"var(--blue)"}}>{l.volume_kg}kg</span>
+                  <span className="mono" style={{color:"var(--accent-3)"}}>{l.volume_kg}kg</span>
                   <button className="sm ghost" style={{minHeight:28,padding:"0 8px"}} onClick={()=>setLife(life.filter((_,idx)=>idx!==i))}>✗</button>
                 </span>
               </div>
@@ -1295,7 +1400,7 @@ function LogTab({ settings, week, today, todayLog, saveLog, saveSettings, logs, 
         )}
         <div className="row between mt12">
           <span className="muted small">Life sub-total</span>
-          <span className="mono" style={{fontWeight:700,color:"var(--blue)"}}>{lifeTotal}kg</span>
+          <span className="mono" style={{fontWeight:700,color:"var(--accent-3)"}}>{lifeTotal}kg</span>
         </div>
         <hr className="divider" />
         <div className="row between">
@@ -1550,9 +1655,23 @@ function SettingsTab({ settings, saveSettings, milestones, saveMilestone, delete
     location.reload();
   };
 
+  const skin = settings.theme || "hotpink";
   return (
     <div>
       <h1 className="mb8">Settings</h1>
+
+      <div className="card">
+        <h3>Skin</h3>
+        <div className="skin-grid mt12">
+          {SKINS.map(s => (
+            <button key={s.id} className={"skin-sw" + (skin===s.id ? " on" : "")}
+              style={{ background: `linear-gradient(135deg, ${s.c[0]}, ${s.c[1]})` }}
+              onClick={() => { haptic(12); saveSettings({ ...settings, theme: s.id }); }}>
+              {s.label}{skin===s.id && <span className="tick">✓</span>}
+            </button>
+          ))}
+        </div>
+      </div>
 
       <div className="card">
         <h3>Targets</h3>
