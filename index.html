@@ -1,0 +1,1517 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
+<meta name="theme-color" content="#0d1117" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Ground Control" />
+<meta name="description" content="Persistent second brain — life systems, trading alerts, and orientation." />
+<title>Ground Control</title>
+<link rel="manifest" href="manifest.json" />
+<link rel="apple-touch-icon" href="icons/icon-180.png" />
+<link rel="icon" type="image/png" href="icons/icon-192.png" />
+
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --surface-2: #1c2330;
+    --border: #30363d;
+    --text-primary: #e6edf3;
+    --text-secondary: #7d8590;
+    --high: #f85149;
+    --medium: #d29922;
+    --low: #3fb950;
+    --blue: #58a6ff;
+    --purple: #bc8cff;
+    --amber: #d29922;
+    --nav-h: 56px;
+  }
+
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg);
+    color: var(--text-primary);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-size: 16px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+    overscroll-behavior-y: none;
+  }
+  #root { min-height: 100vh; }
+
+  .app {
+    max-width: 430px;
+    margin: 0 auto;
+    min-height: 100vh;
+    position: relative;
+    background: var(--bg);
+  }
+  .content {
+    padding: 14px 14px calc(72px + env(safe-area-inset-bottom));
+    animation: fade 100ms ease;
+  }
+  @keyframes fade { from { opacity: 0.4; } to { opacity: 1; } }
+
+  h1, h2, h3 { margin: 0; font-weight: 650; }
+  h1 { font-size: 20px; }
+  h2 { font-size: 16px; letter-spacing: 0.2px; }
+  h3 { font-size: 14px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.6px; font-weight: 600; }
+  p { margin: 0; }
+  .muted { color: var(--text-secondary); }
+  .small { font-size: 13px; }
+  .tiny { font-size: 12px; }
+  .mono { font-variant-numeric: tabular-nums; }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px;
+    margin-bottom: 12px;
+  }
+  .row { display: flex; align-items: center; gap: 8px; }
+  .row.wrap { flex-wrap: wrap; }
+  .between { justify-content: space-between; }
+  .col { display: flex; flex-direction: column; gap: 8px; }
+  .gap4 { gap: 4px; } .gap12 { gap: 12px; }
+  .mt8 { margin-top: 8px; } .mt12 { margin-top: 12px; } .mb8 { margin-bottom: 8px; }
+  .grow { flex: 1; }
+
+  .badge {
+    display: inline-flex; align-items: center; justify-content: center;
+    padding: 4px 10px; border-radius: 999px;
+    font-size: 12px; font-weight: 700; letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+  .badge.HIGH { background: rgba(248,81,73,0.15); color: var(--high); border: 1px solid rgba(248,81,73,0.4); }
+  .badge.MEDIUM { background: rgba(210,153,34,0.15); color: var(--medium); border: 1px solid rgba(210,153,34,0.4); }
+  .badge.LOW { background: rgba(63,185,80,0.15); color: var(--low); border: 1px solid rgba(63,185,80,0.4); }
+  .badge.project { background: var(--surface-2); color: var(--text-secondary); border: 1px solid var(--border); }
+
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: 999px; padding: 7px 12px; font-size: 13px; font-weight: 600;
+  }
+  .pill .lab { color: var(--text-secondary); font-weight: 500; }
+
+  button {
+    font-family: inherit; font-size: 15px; cursor: pointer;
+    border-radius: 10px; border: 1px solid var(--border);
+    background: var(--surface-2); color: var(--text-primary);
+    min-height: 44px; padding: 0 14px;
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    transition: filter 100ms ease, background 100ms ease;
+  }
+  button:active { filter: brightness(1.25); }
+  button.primary { background: var(--low); color: #08130b; border-color: var(--low); font-weight: 700; }
+  button.block { width: 100%; }
+  button.ghost { background: transparent; }
+  button.danger { background: rgba(248,81,73,0.12); color: var(--high); border-color: rgba(248,81,73,0.4); }
+  button.sm { min-height: 36px; font-size: 13px; padding: 0 10px; border-radius: 8px; }
+  button:disabled { opacity: 0.45; }
+
+  input, select, textarea {
+    font-family: inherit; font-size: 16px;
+    background: var(--bg); color: var(--text-primary);
+    border: 1px solid var(--border); border-radius: 9px;
+    padding: 10px 12px; min-height: 44px; width: 100%;
+  }
+  textarea { min-height: 64px; resize: vertical; }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: var(--blue); }
+  label.field { display: flex; flex-direction: column; gap: 5px; font-size: 13px; color: var(--text-secondary); }
+
+  /* segmented selectors (energy, yes/no) */
+  .seg { display: flex; gap: 6px; }
+  .seg button {
+    flex: 1; min-height: 44px; padding: 0 4px; border-radius: 9px;
+    background: var(--bg); color: var(--text-secondary); font-weight: 600;
+  }
+  .seg button.on { background: var(--surface-2); color: var(--text-primary); border-color: var(--text-secondary); }
+  .seg button.on.yes { background: rgba(63,185,80,0.18); color: var(--low); border-color: var(--low); }
+  .seg button.on.no { background: rgba(248,81,73,0.15); color: var(--high); border-color: var(--high); }
+  .seg button.on.energy { background: var(--blue); color: #06121f; border-color: var(--blue); }
+  .seg button.on.health { background: rgba(188,140,255,0.2); color: var(--purple); border-color: var(--purple); }
+
+  /* progress bars */
+  .bar-wrap { display: flex; flex-direction: column; gap: 5px; }
+  .bar-head { display: flex; justify-content: space-between; font-size: 13px; }
+  .bar-track { height: 10px; background: var(--bg); border: 1px solid var(--border); border-radius: 999px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 999px; width: 0; transition: width 300ms ease; }
+
+  .divider { height: 1px; background: var(--border); margin: 12px 0; border: 0; }
+
+  /* exercise / log rows */
+  .ex-row { display: grid; grid-template-columns: 1fr 84px 78px; gap: 8px; align-items: center; }
+  .ex-row .vol { text-align: right; color: var(--text-secondary); font-size: 13px; }
+  .ex-row input { text-align: center; padding: 8px; }
+
+  .preset-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .preset-grid button { justify-content: flex-start; }
+
+  table.weeks { width: 100%; border-collapse: collapse; font-size: 12px; }
+  table.weeks th, table.weeks td { padding: 7px 6px; text-align: left; border-bottom: 1px solid var(--border); }
+  table.weeks th { color: var(--text-secondary); font-weight: 600; text-transform: uppercase; font-size: 10px; letter-spacing: 0.4px; }
+  table.weeks td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  tr.r-green td:first-child { box-shadow: inset 3px 0 0 var(--low); }
+  tr.r-amber td:first-child { box-shadow: inset 3px 0 0 var(--medium); }
+  tr.r-red td:first-child { box-shadow: inset 3px 0 0 var(--high); }
+
+  /* bottom nav */
+  nav.tabs {
+    position: fixed; left: 0; right: 0; bottom: 0;
+    max-width: 430px; margin: 0 auto;
+    height: calc(var(--nav-h) + env(safe-area-inset-bottom));
+    padding-bottom: env(safe-area-inset-bottom);
+    display: flex; background: var(--surface);
+    border-top: 1px solid var(--border); z-index: 40;
+  }
+  nav.tabs button {
+    position: relative;
+    flex: 1; min-height: var(--nav-h); border: 0; border-radius: 0; background: transparent;
+    flex-direction: column; gap: 2px; color: var(--text-secondary);
+    font-size: 10px; letter-spacing: 0.3px; padding: 6px 0;
+  }
+  nav.tabs button .ico { font-size: 18px; line-height: 1; }
+  nav.tabs button.active { color: var(--active); }
+  nav.tabs button .nbadge {
+    position: absolute; transform: translate(14px, -8px);
+    background: var(--amber); color: #1a1300; font-size: 10px; font-weight: 800;
+    border-radius: 999px; min-width: 16px; height: 16px; padding: 0 4px;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+
+  /* overlays */
+  .overlay {
+    position: fixed; inset: 0; z-index: 60; background: var(--bg);
+    max-width: 430px; margin: 0 auto;
+    display: flex; flex-direction: column;
+    animation: fade 100ms ease;
+  }
+  .overlay .ov-body { padding: 16px; overflow-y: auto; flex: 1; }
+  .sheet {
+    position: fixed; inset: 0; z-index: 55; background: rgba(0,0,0,0.55);
+    display: flex; align-items: flex-end; justify-content: center;
+  }
+  .sheet-inner {
+    width: 100%; max-width: 430px; background: var(--surface);
+    border-top-left-radius: 16px; border-top-right-radius: 16px;
+    border-top: 1px solid var(--border);
+    padding: 16px 16px calc(20px + env(safe-area-inset-bottom));
+    max-height: 88vh; overflow-y: auto;
+    animation: slideup 160ms ease;
+  }
+  @keyframes slideup { from { transform: translateY(24px); } to { transform: translateY(0); } }
+
+  .banner {
+    border-radius: 10px; padding: 10px 12px; font-size: 13px; margin-bottom: 12px;
+    border: 1px solid;
+  }
+  .banner.warn { background: rgba(210,153,34,0.12); border-color: rgba(210,153,34,0.4); color: var(--amber); }
+  .banner.info { background: rgba(88,166,255,0.1); border-color: rgba(88,166,255,0.35); color: var(--blue); }
+
+  .codebox {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 9px;
+    padding: 10px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11.5px; white-space: pre-wrap; word-break: break-word;
+    color: var(--text-primary); max-height: 220px; overflow-y: auto;
+  }
+  .list-item {
+    display: flex; justify-content: space-between; gap: 10px;
+    padding: 10px 0; border-bottom: 1px solid var(--border);
+  }
+  .list-item:last-child { border-bottom: 0; }
+  .dot { width: 8px; height: 8px; border-radius: 999px; display: inline-block; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script crossorigin src="https://unpkg.com/react@18.2.0/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
+
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useMemo, useRef, useCallback } = React;
+
+/* ============================================================
+   STORAGE LAYER  (localStorage, keys per build brief)
+   gc_settings · gc_seeded · log_YYYY-MM-DD · milestone_[id]
+   alert_log_[id]_[ts] · push_subscription
+   ============================================================ */
+const store = {
+  get(key, fallback) {
+    try { const v = localStorage.getItem(key); return v == null ? fallback : JSON.parse(v); }
+    catch (e) { return fallback; }
+  },
+  set(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {} },
+  del(key) { try { localStorage.removeItem(key); } catch (e) {} },
+  keys() { try { return Object.keys(localStorage); } catch (e) { return []; } }
+};
+
+/* ============================================================
+   SEED CONSTANTS
+   ============================================================ */
+const DEFAULT_VOLUME_MAP = {
+  "Deadlifts": 54, "OH Press": 8, "Squats": 66,
+  "Push-ups": 33, "KB Swings": 8, "Squat+OP Combo": 74
+};
+
+const DEFAULT_CALENDAR = [
+  {start:"2026-06-10",end:"2026-06-15",type:"HIGH",note:"Survey close + GPT testing + distribution"},
+  {start:"2026-06-17",end:"2026-06-22",type:"HIGH",note:"SNOW synthesis + two decisions due Friday"},
+  {start:"2026-06-24",end:"2026-07-12",type:"LOW",note:"Decision phase clear, single-threaded"},
+  {start:"2026-07-13",end:"2026-07-27",type:"MEDIUM",note:"Royalties + ONIX extract builds"},
+  {start:"2026-08-01",end:"2026-08-16",type:"LOW",note:"Pre-consult, mostly waiting"},
+  {start:"2026-08-17",end:"2026-08-31",type:"MEDIUM",note:"ONIX + consult materials"},
+  {start:"2026-09-01",end:"2026-09-13",type:"MEDIUM",note:"Townhall outline + visuals"},
+  {start:"2026-09-14",end:"2026-09-21",type:"HIGH",note:"Townhall delivery week"},
+  {start:"2026-09-22",end:"2026-09-30",type:"LOW",note:"Post-delivery recovery bounce"}
+];
+
+const DEFAULT_MILESTONES = [
+  {id:"smgb_jul",project:"Trading",name:"SMGB DCA — July tranche",type:"recurring_monthly",trigger:"last_trading_day_of_month",months:["2026-07","2026-08","2026-09","2026-10","2026-11","2026-12","2027-01","2027-02","2027-03"],action:"Buy 1 share SMGB at market price on Freetrade. No limit order, no timing within month. Log purchase price and cumulative shares.",next_fire:"2026-07-31",drive_file:"portfolio_dashboard",context:"Current spec sleeve: 13.0% of ISA (in band)."},
+  {id:"soun_reassess",project:"Trading",name:"SOUN limit sell reassessment",type:"date",trigger:"2026-06-30",action:"Check if $7.90 limit sell on 40 SOUN shares has filled. If unfilled: exit at market to clean up framework violation. SOUN has no thesis — it was an accidental purchase. Log decision.",drive_file:"portfolio_dashboard",context:"SOUN is first in the trim order — no thesis."},
+  {id:"tbill_roll",project:"Trading",name:"T-bill maturity — confirm 100% roll",type:"date",trigger:"2026-07-01",action:"T-bill matures ~3 Jul. Confirm Freetrade has auto-rolled 100% as instructed. Check the rolled amount matches the ~£2,415 gilt allocation. No action needed if rolled correctly — log confirmation.",drive_file:"portfolio_dashboard",context:"Gilt allocation currently 17.7% (target ~20%)."},
+  {id:"unh_q2",project:"Trading",name:"UNH Q2 results — MCR data review",type:"date",trigger:"2026-07-10",action:"UNH Q2 results expected ~10–28 Jul (verify via UNH IR). Key data point: Medical Cost Ratio. Review against hold thesis. Decision: continue hold or exit. Log outcome.",drive_file:"portfolio_dashboard",context:"Quality sleeve at 59.1% (in 55–60% band)."},
+  {id:"riol_vfem_rotation",project:"Trading",name:"RIOL → VFEM rotation",type:"date",trigger:"2026-07-25",action:"Execute planned rotation: sell RIOL (£406 approx), buy VFEM same day. Both LSE-listed UCITS — no FX, no stamp. VFEM reclassifies to core sleeve (not spec). Check spec sleeve stays under 15% ceiling post-trade. Do alongside next SMGB tranche if possible.",drive_file:"portfolio_dashboard",context:"Spec ceiling is 15% of ISA — check post-trade."},
+  {id:"anic_reassess",project:"Trading",name:"ANIC limit sell expiry check",type:"date",trigger:"2026-09-01",action:"ANIC limit sell (663 sh @ 0.08p = ~£53) expires 6 Sep. Check fill status. If unfilled and no thesis improvement: let expire and review whether to requeue or exit at market. Log decision.",drive_file:"portfolio_dashboard",context:"ANIC is second in the trim order after SOUN."},
+  {id:"spec_monthly_check",project:"Trading",name:"Spec sleeve monthly check",type:"recurring_monthly",trigger:"1st_of_month",months:["2026-07","2026-08","2026-09","2026-10","2026-11","2026-12"],action:"Check spec sleeve allocation: total must be ≤15% ISA value. Sensible sub-pot target 10% (band 9–11%). Risky sub-pot target 5% (band 4–6%). If any band breached: trim to target, cut in conviction order (SOUN first → ANIC → gains on spikes → lowest conviction). Log current percentages and any action taken.",next_fire:"2026-07-01",drive_file:"portfolio_dashboard",context:"Spec total ≤15%. Sensible 9–11%, Risky 4–6%."},
+  {id:"cing_quarterly",project:"Trading",name:"CING conviction hold quarterly check",type:"recurring_quarterly",trigger:"quarterly",next_fire:"2026-09-02",action:"Review CING position (30 shares, conviction hold post-CRL). Check: (1) resubmission progress — any CMC timeline from management? (2) cash position — still runway into 2027? (3) dilution — any new fundraising? (4) management stability. Only exit on hard triggers: second CRL with safety concerns, cash runway threatened, 18+ months with no resubmission filed. Log quarterly review.",drive_file:"portfolio_dashboard",context:"Exit only on hard triggers — see action."}
+];
+
+const SEED_LOGS = [
+  {date:"2026-06-02",energy:4,water_hit:true,elvanse_taken:true,estrodot_on:true,sunlight:"outdoors",
+   workout:{exercises:[{name:"Deadlifts",reps:8,volume_kg:432},{name:"OH Press",reps:15,volume_kg:120},{name:"Squats",reps:10,volume_kg:660},{name:"Push-ups",reps:5,volume_kg:165},{name:"KB Swings",reps:8,volume_kg:64}],life_volume:[],total_kg:1441},
+   diet:{protein_estimate_g:140,friction_hit:false,friction_type:null},work:{stress_felt:2,note:""}},
+  {date:"2026-06-03",energy:4,water_hit:true,elvanse_taken:true,estrodot_on:true,sunlight:"outdoors",
+   workout:{exercises:[{name:"Deadlifts",reps:10,volume_kg:540},{name:"OH Press",reps:18,volume_kg:144},{name:"Squats",reps:15,volume_kg:990},{name:"Push-ups",reps:6,volume_kg:198},{name:"KB Swings",reps:20,volume_kg:160}],life_volume:[],total_kg:2032},
+   diet:{protein_estimate_g:160,friction_hit:false,friction_type:null},work:{stress_felt:2,note:""}},
+  {date:"2026-06-05",energy:3,water_hit:true,elvanse_taken:true,estrodot_on:true,sunlight:"indoors",
+   workout:{exercises:[{name:"Deadlifts",reps:11,volume_kg:594},{name:"Squat+OP Combo",reps:15,volume_kg:1110}],life_volume:[],total_kg:1704},
+   diet:{protein_estimate_g:130,friction_hit:false,friction_type:null},work:{stress_felt:2,note:""}}
+];
+
+const DEFAULT_SETTINGS = {
+  bodyWeight: 66,
+  proteinWeekly: 1180,
+  waterDaily: 3,
+  volumeMap: DEFAULT_VOLUME_MAP,
+  stressCalendar: DEFAULT_CALENDAR,
+  notifPermission: "default",
+  notifAsked: false
+};
+
+const FRICTION_TYPES = ["Fresh veg waste","Curry fatigue","Frozen supply ran out","Batch cook skipped","Partner coordination","Prep time conflict","Other"];
+const VOLUME_BASELINE = 2800;
+
+/* ============================================================
+   DATE + DOMAIN HELPERS
+   ============================================================ */
+function isoDate(d) {
+  const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,"0"), day = String(d.getDate()).padStart(2,"0");
+  return `${y}-${m}-${day}`;
+}
+function parseISO(s) { const [y,m,d] = s.split("-").map(Number); return new Date(y, m-1, d); }
+function todayStr() { return isoDate(new Date()); }
+function dayName(s) { return parseISO(s).toLocaleDateString("en-GB",{weekday:"long"}); }
+function prettyDate(s) { return parseISO(s).toLocaleDateString("en-GB",{day:"numeric",month:"long",year:"numeric"}); }
+function shortDate(s) { return parseISO(s).toLocaleDateString("en-GB",{day:"numeric",month:"short"}); }
+function daysBetween(aStr, bStr) {
+  const a = parseISO(aStr), b = parseISO(bStr);
+  return Math.round((b - a) / 86400000);
+}
+function mondayOf(s) {
+  const d = parseISO(s); const wd = (d.getDay() + 6) % 7; // Mon=0
+  d.setDate(d.getDate() - wd); return isoDate(d);
+}
+function lastTradingDayOfMonth(year, monthIdx) { // monthIdx 0-based
+  let d = new Date(year, monthIdx + 1, 0); // last calendar day
+  while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() - 1);
+  return d;
+}
+
+function weekTypeFor(dateStr, calendar) {
+  for (const p of calendar) {
+    if (dateStr >= p.start && dateStr <= p.end) return { type: p.type, note: p.note };
+  }
+  return { type: "LOW", note: "No scheduled work period — treated as baseline." };
+}
+function weeklyTargets(type) {
+  if (type === "HIGH")   return { volume: 1120, protein: 900 };
+  if (type === "MEDIUM") return { volume: 1820, protein: 1050 };
+  return { volume: 2800, protein: 1180 };
+}
+function pctOfBaseline(type) { return type==="HIGH"?40 : type==="MEDIUM"?65 : 100; }
+
+/* next-fire computation for a milestone, from a reference date string */
+function getNextFire(m, fromStr) {
+  const from = parseISO(fromStr);
+  const cmp = (dStr) => dStr; // dates compare lexicographically when ISO
+
+  if (m.type === "date") return m.trigger;
+
+  if (m.type === "recurring_monthly" && m.trigger === "last_trading_day_of_month") {
+    const months = m.months || [];
+    for (const ym of months) {
+      const [y, mo] = ym.split("-").map(Number);
+      const d = isoDate(lastTradingDayOfMonth(y, mo - 1));
+      if (cmp(d) >= fromStr) return d;
+    }
+    // all tranches in the past: fall back to the last configured one
+    if (months.length) { const [y, mo] = months[months.length-1].split("-").map(Number); return isoDate(lastTradingDayOfMonth(y, mo - 1)); }
+    return m.next_fire || fromStr;
+  }
+  if (m.type === "recurring_monthly" && m.trigger === "1st_of_month") {
+    const months = m.months || [];
+    for (const ym of months) {
+      const d = ym + "-01";
+      if (cmp(d) >= fromStr) return d;
+    }
+    if (months.length) return months[months.length-1] + "-01";
+    return m.next_fire || fromStr;
+  }
+  // recurring_quarterly + anything else: use stored next_fire
+  return m.next_fire || m.trigger || fromStr;
+}
+
+/* effective next fire respecting a snooze stored on the milestone */
+function effectiveFire(m, fromStr) {
+  const base = getNextFire(m, fromStr);
+  if (m.snooze_until && m.snooze_until > base) return m.snooze_until;
+  return base;
+}
+
+/* ============================================================
+   COACH MESSAGE — static rules, evaluated in order (Module 3)
+   ============================================================ */
+function coachMessage(ctx) {
+  const { type, energy, waterHit, estrodot, workoutLogged, hour } = ctx;
+  if (estrodot && energy <= 2)
+    return "Low energy is expected during the Estrodot adjustment window. This is physiological, not motivational.";
+  if (type === "HIGH" && !workoutLogged && hour > 17)
+    return "HIGH week. One 15-minute session counts as a session. Don't compare this week's volume to a LOW week.";
+  if (type === "HIGH" && workoutLogged)
+    return "Session logged in a HIGH week. That's the adjusted target met. Frozen meals cover protein for the rest of the week.";
+  if (!waterHit && hour > 14)
+    return "3L minimum not yet hit. Dehydration amplifies fatigue — physiology, not willpower.";
+  if (type === "LOW" && workoutLogged)
+    return "LOW week with a session logged. This is the catch-up window — use it.";
+  if (type === "MEDIUM" && energy <= 2)
+    return "Energy at 2 on a MEDIUM week. One shorter session is the realistic target. Life volume counts.";
+  if (type === "LOW" && energy >= 4 && !workoutLogged)
+    return "Energy available, LOW week. This is the week to push volume.";
+  return "Log energy and water to get a read on today.";
+}
+
+/* OPTIONAL API COACH LAYER — TODO(phase 2): browser fetch to the Anthropic API
+   requires a proxy with an API key (CORS + key safety). Static rules above are
+   the shipped behaviour; this is wired but disabled by default.
+const getCoachMessageAPI = async (context) => {
+  try {
+    const r = await fetch("https://api.anthropic.com/v1/messages", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ model:"claude-sonnet-4-6", max_tokens:120,
+        system:"Analytical second-brain coach for ADHD adult. Direct, peer-level, no motivational language, no exclamation marks, max 2 sentences.",
+        messages:[{role:"user", content:`State: ${JSON.stringify(context)}\nCoach message:`}] }) });
+    const data = await r.json();
+    return data.content?.[0]?.text || null;
+  } catch { return null; }
+};
+*/
+
+/* empty daily log, with defaults pre-filled for the given week type */
+function emptyLog(date, type) {
+  return {
+    date,
+    energy: type === "HIGH" ? 2 : type === "MEDIUM" ? 3 : 4,
+    water_hit: false,
+    elvanse_taken: true,
+    estrodot_on: true,
+    sunlight: "",
+    workout: { exercises: [], life_volume: [], total_kg: 0 },
+    diet: { protein_estimate_g: 0, friction_hit: false, friction_type: null },
+    work: { stress_felt: type === "HIGH" ? 4 : type === "MEDIUM" ? 3 : 2, note: "" }
+  };
+}
+function logVolume(log) {
+  if (!log || !log.workout) return 0;
+  const w = (log.workout.exercises || []).reduce((s,e)=> s + (e.volume_kg||0), 0);
+  const l = (log.workout.life_volume || []).reduce((s,e)=> s + (e.volume_kg||0), 0);
+  return w + l;
+}
+function hasWorkout(log) {
+  return !!log && !!log.workout && (log.workout.exercises || []).some(e => (e.reps||0) > 0);
+}
+
+/* ============================================================
+   SEED ON FIRST LAUNCH
+   ============================================================ */
+function seedIfNeeded() {
+  if (store.get("gc_seeded")) return;
+  if (!store.get("gc_settings")) store.set("gc_settings", DEFAULT_SETTINGS);
+  SEED_LOGS.forEach(l => store.set("log_" + l.date, l));
+  DEFAULT_MILESTONES.forEach(m => store.set("milestone_" + m.id, m));
+  store.set("gc_seeded", true);
+}
+
+function loadAllLogs() {
+  const out = {};
+  store.keys().filter(k => k.startsWith("log_")).forEach(k => {
+    const l = store.get(k); if (l && l.date) out[l.date] = l;
+  });
+  return out;
+}
+function loadMilestones() {
+  return store.keys().filter(k => k.startsWith("milestone_")).map(k => store.get(k)).filter(Boolean);
+}
+function loadAlertLogs() {
+  return store.keys().filter(k => k.startsWith("alert_log_")).map(k => store.get(k)).filter(Boolean)
+    .sort((a,b)=> (b.timestamp||"").localeCompare(a.timestamp||""));
+}
+
+/* ============================================================
+   SMALL UI PRIMITIVES
+   ============================================================ */
+function ProgressBar({ label, value, target, unit, color, done }) {
+  const pct = done != null ? (done ? 100 : 0) : Math.min(100, target > 0 ? (value / target) * 100 : 0);
+  const c = color || "var(--low)";
+  return (
+    <div className="bar-wrap">
+      <div className="bar-head">
+        <span>{label}</span>
+        <span className="mono muted">
+          {done != null ? (done ? "hit" : "not hit") : `${Math.round(value)}${unit||""} / ${Math.round(target)}${unit||""}`}
+        </span>
+      </div>
+      <div className="bar-track"><div className="bar-fill" style={{ width: pct + "%", background: c }} /></div>
+    </div>
+  );
+}
+
+function Segment({ options, value, onChange, variant }) {
+  return (
+    <div className="seg">
+      {options.map(o => {
+        const on = String(value) === String(o.value);
+        return (
+          <button key={String(o.value)} className={on ? `on ${variant||""}` : ""}
+            onClick={() => onChange(o.value)}>{o.label}</button>
+        );
+      })}
+    </div>
+  );
+}
+const yesNo = [{label:"YES",value:true},{label:"NO",value:false}];
+const energyOpts = [1,2,3,4,5].map(n => ({label:String(n),value:n}));
+
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); return true; }
+  catch (e) {
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text; ta.style.position="fixed"; ta.style.opacity="0";
+      document.body.appendChild(ta); ta.select(); document.execCommand("copy");
+      document.body.removeChild(ta); return true;
+    } catch (e2) { return false; }
+  }
+}
+
+/* ============================================================
+   ROOT APP
+   ============================================================ */
+function App() {
+  const [tab, setTab] = useState("today");
+  const [settings, setSettings] = useState(() => store.get("gc_settings", DEFAULT_SETTINGS));
+  const [logs, setLogs] = useState(() => loadAllLogs());
+  const [milestones, setMilestones] = useState(() => loadMilestones());
+  const [alertLogs, setAlertLogs] = useState(() => loadAlertLogs());
+  const [alertOpen, setAlertOpen] = useState(null); // {milestone, auto}
+  const [showIntro, setShowIntro] = useState(() => !store.get("gc_settings", DEFAULT_SETTINGS).notifAsked);
+  const today = todayStr();
+  const week = weekTypeFor(today, settings.stressCalendar);
+  const timers = useRef([]);
+
+  const activeColor = week.type === "HIGH" ? "var(--high)" : week.type === "MEDIUM" ? "var(--medium)" : "var(--low)";
+
+  /* persistence helpers shared with tabs */
+  const saveSettings = useCallback((next) => { setSettings(next); store.set("gc_settings", next); }, []);
+  const saveLog = useCallback((log) => {
+    store.set("log_" + log.date, log);
+    setLogs(prev => ({ ...prev, [log.date]: log }));
+  }, []);
+  const saveMilestone = useCallback((m) => {
+    store.set("milestone_" + m.id, m);
+    setMilestones(loadMilestones());
+  }, []);
+  const deleteMilestone = useCallback((id) => {
+    store.del("milestone_" + id); setMilestones(loadMilestones());
+  }, []);
+  const recordAlert = useCallback((rec) => {
+    store.set(`alert_log_${rec.id}_${Date.now()}`, rec);
+    setAlertLogs(loadAlertLogs());
+  }, []);
+
+  const todayLog = logs[today] || emptyLog(today, week.type);
+
+  /* ---- service worker registration + notification deep-link wiring ---- */
+  useEffect(() => {
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("sw.js").catch(()=>{});
+      navigator.serviceWorker.addEventListener("message", (ev) => {
+        if (ev.data && ev.data.type === "NOTIFICATION_CLICK") {
+          const m = loadMilestones().find(x => x.id === ev.data.id);
+          if (m) { setTab("alerts"); setAlertOpen({ milestone: m }); }
+        }
+      });
+    }
+    // deep-link from a cold open: /?alert=<id>
+    const params = new URLSearchParams(location.search);
+    const aid = params.get("alert");
+    if (aid) {
+      const m = loadMilestones().find(x => x.id === aid);
+      if (m) { setTab("alerts"); setAlertOpen({ milestone: m }); }
+      history.replaceState({}, "", location.pathname);
+    }
+  }, []);
+
+  /* ---- client-side scheduling: re-arm timers on open (Module 1) ----
+     LIMITATION: setTimeout only fires while the PWA is open/backgrounded.
+     True closed-app push needs a backend (phase 2). We recalculate every open. */
+  useEffect(() => {
+    timers.current.forEach(t => clearTimeout(t));
+    timers.current = [];
+    const now = Date.now();
+    const MAX = 24 * 24 * 3600 * 1000; // setTimeout safe ceiling (~24 days)
+    milestones.forEach(m => {
+      const fire = effectiveFire(m, today);
+      if (!fire) return;
+      const fireMs = parseISO(fire).getTime() + 9 * 3600 * 1000; // 09:00 local
+      const delay = fireMs - now;
+      if (delay > 0 && delay < MAX) {
+        const t = setTimeout(() => {
+          if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+            navigator.serviceWorker.controller.postMessage({
+              type: "SHOW_NOTIFICATION",
+              payload: { id: m.id, project: m.project, title: m.name, body: m.action.slice(0, 120) }
+            });
+          }
+          setAlertOpen({ milestone: m, auto: true });
+        }, delay);
+        timers.current.push(t);
+      }
+    });
+    return () => { timers.current.forEach(t => clearTimeout(t)); };
+  }, [milestones, today]);
+
+  /* upcoming milestones sorted by next fire */
+  const upcoming = useMemo(() => {
+    return milestones
+      .map(m => ({ m, fire: effectiveFire(m, today), days: daysBetween(today, effectiveFire(m, today)) }))
+      .sort((a,b) => a.fire.localeCompare(b.fire));
+  }, [milestones, today]);
+
+  const nextAlert = upcoming.find(u => u.days >= 0) || upcoming[0];
+  const pending7 = upcoming.filter(u => u.days >= 0 && u.days <= 7).length;
+
+  /* ---- notification permission flow ---- */
+  const requestPerms = async () => {
+    let perm = "default";
+    try { if ("Notification" in window) perm = await Notification.requestPermission(); }
+    catch (e) { perm = "default"; }
+    saveSettings({ ...settings, notifPermission: perm, notifAsked: true });
+    setShowIntro(false);
+  };
+  const dismissIntro = () => { saveSettings({ ...settings, notifAsked: true }); setShowIntro(false); };
+
+  const ctxBundle = { settings, week, today, logs, milestones, alertLogs, saveSettings, saveLog, saveMilestone, deleteMilestone, recordAlert, setTab, setAlertOpen };
+
+  return (
+    <div className="app" style={{ "--active": activeColor }}>
+      <div className="content">
+        {showIntro && (
+          <IntroCard onEnable={requestPerms} onSkip={dismissIntro} />
+        )}
+        {!showIntro && settings.notifPermission === "denied" && (
+          <div className="banner warn">Notifications off — trading alerts won't fire. Enable in browser settings.</div>
+        )}
+
+        {tab === "today" &&    <TodayTab {...ctxBundle} todayLog={todayLog} nextAlert={nextAlert} />}
+        {tab === "alerts" &&   <AlertsTab {...ctxBundle} upcoming={upcoming} />}
+        {tab === "log" &&      <LogTab {...ctxBundle} todayLog={todayLog} />}
+        {tab === "patterns" && <PatternsTab {...ctxBundle} />}
+        {tab === "settings" && <SettingsTab {...ctxBundle} setLogs={setLogs} setMilestones={setMilestones} setAlertLogs={setAlertLogs} />}
+      </div>
+
+      <Nav tab={tab} setTab={setTab} pending7={pending7} />
+
+      {alertOpen && (
+        <AlertScreen
+          milestone={alertOpen.milestone}
+          settings={settings}
+          recordAlert={recordAlert}
+          saveMilestone={saveMilestone}
+          onClose={() => setAlertOpen(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function IntroCard({ onEnable, onSkip }) {
+  return (
+    <div className="card">
+      <h2>Ground Control</h2>
+      <p className="small muted mt8">Notifications fire time-critical trading and check-in alerts so you don't have to hold the dates in your head.</p>
+      <div className="row mt12" style={{gap:10}}>
+        <button className="primary grow" onClick={onEnable}>Enable notifications</button>
+        <button className="ghost" onClick={onSkip}>Not now</button>
+      </div>
+    </div>
+  );
+}
+
+function Nav({ tab, setTab, pending7 }) {
+  const tabs = [
+    { id:"today", label:"Today", ico:"◎" },
+    { id:"alerts", label:"Alerts", ico:"◔" },
+    { id:"log", label:"Log", ico:"✎" },
+    { id:"patterns", label:"Patterns", ico:"◫" },
+    { id:"settings", label:"Settings", ico:"⚙" }
+  ];
+  return (
+    <nav className="tabs">
+      {tabs.map(t => (
+        <button key={t.id} className={tab===t.id ? "active" : ""} onClick={() => setTab(t.id)}>
+          <span className="ico">{t.ico}</span>
+          <span>{t.label}</span>
+          {t.id === "alerts" && pending7 > 0 && <span className="nbadge">{pending7}</span>}
+        </button>
+      ))}
+    </nav>
+  );
+}
+
+/* ============================================================
+   TODAY TAB (Module 3)
+   ============================================================ */
+function TodayTab({ settings, week, today, todayLog, saveLog, nextAlert, setAlertOpen, setTab }) {
+  const wt = weeklyTargets(week.type);
+  const volTargetDay = wt.volume / 7;
+  const proTargetDay = wt.protein / 7;
+  const volToday = logVolume(todayLog);
+  const proToday = todayLog.diet?.protein_estimate_g || 0;
+
+  const patch = (changes) => saveLog({ ...todayLog, ...changes });
+
+  const hour = new Date().getHours();
+  const coach = coachMessage({
+    type: week.type, energy: todayLog.energy, waterHit: todayLog.water_hit,
+    estrodot: todayLog.estrodot_on, workoutLogged: hasWorkout(todayLog), hour
+  });
+
+  return (
+    <div>
+      {/* Orientation block */}
+      <div className="card">
+        <div className="row between">
+          <span className={"badge " + week.type}>{week.type} week</span>
+          <span className="tiny muted">{dayName(today)} · {prettyDate(today)}</span>
+        </div>
+        <p className="small mt8">{week.note}</p>
+        <div className="row wrap mt12" style={{gap:8}}>
+          <span className="pill"><span className="lab">Volume</span> {Math.round(wt.volume)}kg</span>
+          <span className="pill"><span className="lab">Protein</span> {wt.protein}g</span>
+          <span className="pill"><span className="lab">Water</span> {settings.waterDaily}L</span>
+        </div>
+        {nextAlert && (
+          <button className="ghost block mt12" style={{justifyContent:"space-between"}}
+            onClick={() => { setTab("alerts"); setAlertOpen({ milestone: nextAlert.m }); }}>
+            <span className="small" style={{textAlign:"left"}}>
+              <span className="muted tiny">Next alert</span><br/>{nextAlert.m.name}
+            </span>
+            <span className="small mono" style={{color:"var(--amber)"}}>
+              {nextAlert.days === 0 ? "today" : nextAlert.days > 0 ? nextAlert.days + "d" : Math.abs(nextAlert.days)+"d ago"}
+            </span>
+          </button>
+        )}
+      </div>
+
+      {/* Today's progress */}
+      <div className="card">
+        <h3>Today's progress</h3>
+        <div className="col mt12">
+          <ProgressBar label="Volume" value={volToday} target={volTargetDay} unit="kg" color={"var(--low)"} />
+          <ProgressBar label="Protein" value={proToday} target={proTargetDay} unit="g" color={"var(--purple)"} />
+          <ProgressBar label="Water" done={todayLog.water_hit} color={"var(--blue)"} />
+        </div>
+      </div>
+
+      {/* Quick log */}
+      <div className="card">
+        <h3>Quick log</h3>
+        <div className="col mt12">
+          <div>
+            <div className="small muted mb8">Energy</div>
+            <Segment options={energyOpts} value={todayLog.energy} variant="energy" onChange={(v)=>patch({energy:v})} />
+          </div>
+          <div>
+            <div className="small muted mb8">Water {settings.waterDaily}L</div>
+            <Segment options={yesNo} value={todayLog.water_hit} variant={todayLog.water_hit?"yes":"no"} onChange={(v)=>patch({water_hit:v})} />
+          </div>
+          <div className="row" style={{gap:10}}>
+            <div className="grow">
+              <div className="small muted mb8">Elvanse</div>
+              <Segment options={yesNo} value={todayLog.elvanse_taken} variant="health" onChange={(v)=>patch({elvanse_taken:v})} />
+            </div>
+            <div className="grow">
+              <div className="small muted mb8">Estrodot</div>
+              <Segment options={yesNo} value={todayLog.estrodot_on} variant="health" onChange={(v)=>patch({estrodot_on:v})} />
+            </div>
+          </div>
+        </div>
+        <div className="col mt12">
+          <button className="primary block" onClick={()=>setTab("log")}>+ Log workout</button>
+          <button className="block" onClick={()=>setTab("log")}>+ Diet check-in</button>
+          <button className="ghost block" onClick={()=>setTab("log")}>+ Life volume</button>
+        </div>
+      </div>
+
+      {/* Coach message */}
+      <div className="card" style={{borderColor:"var(--border)"}}>
+        <h3>Read on today</h3>
+        <p className="mt8 small">{coach}</p>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   ALERTS TAB (Module 2)
+   ============================================================ */
+function AlertsTab({ milestones, upcoming, alertLogs, setAlertOpen, today }) {
+  const [hist, setHist] = useState(false);
+  const [proj, setProj] = useState("All");
+  const [range, setRange] = useState("30");
+  const projects = ["All", ...Array.from(new Set(milestones.map(m=>m.project)))];
+
+  const filteredHist = alertLogs.filter(a => {
+    if (proj !== "All" && a.project !== proj) return false;
+    if (range === "30") {
+      const d = (a.timestamp||"").slice(0,10);
+      if (!d || daysBetween(d, today) > 30) return false;
+    }
+    return true;
+  });
+
+  return (
+    <div>
+      <div className="row between mb8">
+        <h1>Alerts</h1>
+        <div className="seg" style={{width:170}}>
+          <button className={!hist?"on":""} onClick={()=>setHist(false)}>Upcoming</button>
+          <button className={hist?"on":""} onClick={()=>setHist(true)}>History</button>
+        </div>
+      </div>
+
+      {!hist && (
+        <div>
+          {upcoming.length === 0 && <p className="muted small">No milestones configured.</p>}
+          {upcoming.map(({m, fire, days}) => (
+            <button key={m.id} className="card block" style={{textAlign:"left",display:"block",height:"auto",padding:14}}
+              onClick={()=>setAlertOpen({ milestone: m })}>
+              <div className="row between">
+                <span className="badge project">{m.project}</span>
+                <span className="small mono" style={{color: days<=7 ? "var(--amber)":"var(--text-secondary)"}}>
+                  {days < 0 ? "overdue" : days === 0 ? "today" : `${days}d · ${shortDate(fire)}`}
+                </span>
+              </div>
+              <div className="mt8" style={{fontWeight:600}}>{m.name}</div>
+              <div className="small muted mt8" style={{display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{m.action}</div>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {hist && (
+        <div>
+          <div className="row mb8" style={{gap:8}}>
+            <select value={proj} onChange={e=>setProj(e.target.value)} style={{flex:1}}>
+              {projects.map(p=> <option key={p} value={p}>{p}</option>)}
+            </select>
+            <select value={range} onChange={e=>setRange(e.target.value)} style={{flex:1}}>
+              <option value="30">Last 30 days</option>
+              <option value="all">All time</option>
+            </select>
+          </div>
+          {filteredHist.length === 0 && <p className="muted small">No alert responses logged yet.</p>}
+          {filteredHist.map((a,i) => (
+            <div key={i} className="card" style={{padding:"10px 14px"}}>
+              <div className="row between">
+                <span style={{fontWeight:600}} className="small">{a.name}</span>
+                <span className={"badge " + (a.response==="Confirmed"?"LOW":a.response==="Dismissed"?"HIGH":"MEDIUM")}>{a.response}</span>
+              </div>
+              <div className="row between mt8">
+                <span className="tiny muted">{a.project} · {(a.timestamp||"").slice(0,10)}</span>
+              </div>
+              {a.note && <p className="small mt8">{a.note}</p>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* Full-screen alert action card + Drive write-back */
+function AlertScreen({ milestone: m, settings, recordAlert, saveMilestone, onClose }) {
+  const [mode, setMode] = useState("card"); // card | confirm | dismiss | drive
+  const [note, setNote] = useState("");
+  const [reason, setReason] = useState("");
+  const [response, setResponse] = useState(null);
+  const [copied, setCopied] = useState(false);
+
+  const buildMarkdown = (resp, text) => {
+    const now = new Date();
+    return `## Ground Control Log — ${m.name}\n` +
+      `**Date:** ${isoDate(now)}\n` +
+      `**Response:** ${resp}\n` +
+      `**Action taken:** ${text || "confirmed as per action description"}\n` +
+      `**Timestamp:** ${now.toISOString()}\n`;
+  };
+
+  const doConfirm = () => {
+    const text = note.trim() || "confirmed as per action description";
+    recordAlert({ id:m.id, name:m.name, project:m.project, response:"Confirmed", note:text, timestamp:new Date().toISOString() });
+    setResponse("Confirmed");
+    setMode("drive");
+  };
+  const doDismiss = () => {
+    recordAlert({ id:m.id, name:m.name, project:m.project, response:"Dismissed", note:reason.trim()||"not applicable", timestamp:new Date().toISOString() });
+    setResponse("Dismissed");
+    setMode("drive");
+  };
+  const doSnooze = () => {
+    const d = new Date(); d.setDate(d.getDate()+1);
+    saveMilestone({ ...m, snooze_until: isoDate(d) });
+    onClose();
+  };
+
+  const markdown = response ? buildMarkdown(response, response==="Confirmed" ? note.trim() : reason.trim()) : "";
+
+  return (
+    <div className="overlay">
+      <div className="row between" style={{padding:"14px 16px",borderBottom:"1px solid var(--border)"}}>
+        <span className="badge project">{m.project}</span>
+        <button className="ghost sm" onClick={onClose}>Close</button>
+      </div>
+      <div className="ov-body">
+        {mode === "card" && (
+          <div>
+            <h1 style={{fontSize:22,lineHeight:1.25}}>{m.name}</h1>
+            <h3 className="mt12">Action required</h3>
+            <p className="mt8">{m.action}</p>
+            {m.context && (
+              <div className="banner info mt12">{m.context}</div>
+            )}
+            <div className="col mt12" style={{gap:10}}>
+              <button className="primary block" onClick={()=>setMode("confirm")}>✓ Confirm — action taken</button>
+              <button className="block" onClick={doSnooze}>⏰ Snooze 24h</button>
+              <button className="danger block" onClick={()=>setMode("dismiss")}>✗ Dismiss — not applicable</button>
+            </div>
+          </div>
+        )}
+
+        {mode === "confirm" && (
+          <div>
+            <h2>Log this action</h2>
+            <label className="field mt12">Note (optional)
+              <textarea value={note} onChange={e=>setNote(e.target.value)} placeholder="What did you do? Leave blank to log as per the action description." />
+            </label>
+            <button className="primary block mt12" onClick={doConfirm}>Save and prepare Drive entry</button>
+            <button className="ghost block mt8" onClick={()=>setMode("card")}>Back</button>
+          </div>
+        )}
+
+        {mode === "dismiss" && (
+          <div>
+            <h2>Dismiss — reason</h2>
+            <label className="field mt12">Reason
+              <textarea value={reason} onChange={e=>setReason(e.target.value)} placeholder="Why is this not applicable?" />
+            </label>
+            <button className="danger block mt12" onClick={doDismiss}>Log as dismissed</button>
+            <button className="ghost block mt8" onClick={()=>setMode("card")}>Back</button>
+          </div>
+        )}
+
+        {mode === "drive" && (
+          <div>
+            <h2>Write to Drive</h2>
+            <p className="small muted mt8">Copy this to your portfolio dashboard. Direct Drive write (OAuth) lands in phase 2.</p>
+            <div className="codebox mt12">{markdown}</div>
+            <button className="primary block mt12" onClick={async()=>{ const ok = await copyText(markdown); setCopied(ok); }}>
+              {copied ? "Copied" : "Copy log entry"}
+            </button>
+            <button className="block mt8" onClick={()=>window.open("https://drive.google.com","_blank")}>Open Drive</button>
+            <button className="ghost block mt8" onClick={onClose}>Done</button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   LOG TAB (Module 4)
+   ============================================================ */
+function LogTab({ settings, week, today, todayLog, saveLog, saveSettings, setTab }) {
+  const map = settings.volumeMap;
+  const baseNames = ["Deadlifts","OH Press","Squats","Push-ups","KB Swings"];
+
+  // Initialise editable draft from the saved day.
+  const initExercises = () => {
+    const saved = todayLog.workout?.exercises || [];
+    const rows = baseNames.map(n => {
+      const f = saved.find(e => e.name === n);
+      return { name: n, reps: f ? String(f.reps) : "" };
+    });
+    saved.filter(e => !baseNames.includes(e.name)).forEach(e => rows.push({ name:e.name, reps:String(e.reps) }));
+    return rows;
+  };
+  const [rows, setRows] = useState(initExercises);
+  const [life, setLife] = useState(() => (todayLog.workout?.life_volume || []).map(l => ({...l})));
+  const [bw, setBw] = useState(settings.bodyWeight);
+  const [editBw, setEditBw] = useState(false);
+  const [protein, setProtein] = useState(todayLog.diet?.protein_estimate_g ? String(todayLog.diet.protein_estimate_g) : "");
+  const [friction, setFriction] = useState(!!todayLog.diet?.friction_hit);
+  const [frictionType, setFrictionType] = useState(todayLog.diet?.friction_type || "");
+  const [energy, setEnergy] = useState(todayLog.energy);
+  const [water, setWater] = useState(todayLog.water_hit);
+  const [elvanse, setElvanse] = useState(todayLog.elvanse_taken);
+  const [estrodot, setEstrodot] = useState(todayLog.estrodot_on);
+  const [sunlight, setSunlight] = useState(todayLog.sunlight || "");
+  const [stress, setStress] = useState(todayLog.work?.stress_felt || 3);
+  const [notes, setNotes] = useState(todayLog.work?.note || "");
+
+  // custom exercise / life inputs
+  const [newExName, setNewExName] = useState("");
+  const [newExReps, setNewExReps] = useState("");
+  const [lifeCustom, setLifeCustom] = useState({ name:"", kg:"", reps:"1" });
+
+  // Push-ups scale with body weight (50% of body weight per rep); others use the map.
+  const perRep = (name) => name === "Push-ups" ? Math.round((Number(bw)||0) * 0.5) : (map[name] != null ? map[name] : 0);
+  const repVol = (name, reps) => Math.round((Number(reps)||0) * perRep(name));
+  const workoutTotal = rows.reduce((s,r)=> s + repVol(r.name, r.reps), 0);
+  const lifeTotal = life.reduce((s,l)=> s + (l.volume_kg||0), 0);
+  const combined = workoutTotal + lifeTotal;
+
+  const setReps = (i, v) => setRows(rows.map((r,idx)=> idx===i?{...r,reps:v.replace(/[^0-9]/g,"")}:r));
+  const addCustomEx = () => {
+    if (!newExName.trim()) return;
+    setRows([...rows, { name:newExName.trim(), reps:newExReps.replace(/[^0-9]/g,"") }]);
+    setNewExName(""); setNewExReps("");
+  };
+  const addLife = (name, kg, reps) => {
+    const w = Number(kg)||0, r = Number(reps)||1;
+    setLife([...life, { name, weight_kg:w, reps:r, volume_kg: Math.round(w*r) }]);
+  };
+  const presets = [
+    {name:"Vacuum", kg:7.5, reps:1, fixed:true},
+    {name:"Groceries", kg:15, reps:1, ask:true},
+    {name:"Kid 20kg", kg:20, reps:1, fixed:true},
+    {name:"Kid 34kg", kg:34, reps:1, fixed:true},
+    {name:"Stairs carry", kg:10, reps:1, ask:true}
+  ];
+
+  const saveDay = () => {
+    const exercises = rows.filter(r => (Number(r.reps)||0) > 0)
+      .map(r => ({ name:r.name, reps:Number(r.reps), volume_kg: repVol(r.name, r.reps) }));
+    const total = exercises.reduce((s,e)=>s+e.volume_kg,0) + lifeTotal;
+    const log = {
+      date: today,
+      energy, water_hit: water, elvanse_taken: elvanse, estrodot_on: estrodot, sunlight,
+      workout: { exercises, life_volume: life, total_kg: total },
+      diet: { protein_estimate_g: Number(protein)||0, friction_hit: friction, friction_type: friction ? (frictionType||null) : null },
+      work: { stress_felt: stress, note: notes }
+    };
+    saveLog(log);
+    if (Number(bw) && Number(bw) !== settings.bodyWeight) saveSettings({ ...settings, bodyWeight: Number(bw) });
+    setTab("today");
+  };
+
+  return (
+    <div>
+      <h1 className="mb8">Log — {shortDate(today)}</h1>
+
+      {/* Workout */}
+      <div className="card">
+        <div className="row between">
+          <h3>Workout</h3>
+          <button className="sm ghost" onClick={()=>setEditBw(!editBw)}>
+            {editBw ? "done" : `${bw}kg ✏`}
+          </button>
+        </div>
+        {editBw && (
+          <div className="row mt8" style={{gap:8}}>
+            <input inputMode="numeric" value={bw} onChange={e=>setBw(e.target.value.replace(/[^0-9.]/g,""))} />
+            <button className="sm" onClick={()=>setEditBw(false)}>Set</button>
+          </div>
+        )}
+        <div className="col mt12" style={{gap:10}}>
+          {rows.map((r,i)=>(
+            <div key={i} className="ex-row">
+              <span className="small">{r.name}</span>
+              <input inputMode="numeric" placeholder="reps" value={r.reps} onChange={e=>setReps(i, e.target.value)} />
+              <span className="vol mono">{repVol(r.name, r.reps)}kg</span>
+            </div>
+          ))}
+        </div>
+        <hr className="divider" />
+        <div className="row" style={{gap:8}}>
+          <input className="grow" placeholder="exercise name" value={newExName} onChange={e=>setNewExName(e.target.value)} />
+          <input style={{width:80}} inputMode="numeric" placeholder="reps" value={newExReps} onChange={e=>setNewExReps(e.target.value.replace(/[^0-9]/g,""))} />
+          <button className="sm" onClick={addCustomEx}>Add</button>
+        </div>
+        <div className="row between mt12">
+          <span className="muted small">Workout sub-total</span>
+          <span className="mono" style={{fontWeight:700}}>{workoutTotal}kg</span>
+        </div>
+      </div>
+
+      {/* Life volume */}
+      <div className="card">
+        <h3>Life volume</h3>
+        <div className="preset-grid mt12">
+          {presets.map(p=>(
+            <button key={p.name} className="sm" onClick={()=>{
+              if (p.ask) {
+                const v = prompt(`${p.name} — weight in kg`, String(p.kg));
+                if (v != null) addLife(p.name, v, 1);
+              } else addLife(p.name, p.kg, p.reps);
+            }}>{p.name}</button>
+          ))}
+        </div>
+        <div className="row mt12" style={{gap:6}}>
+          <input className="grow" placeholder="name" value={lifeCustom.name} onChange={e=>setLifeCustom({...lifeCustom,name:e.target.value})} />
+          <input style={{width:62}} inputMode="numeric" placeholder="kg" value={lifeCustom.kg} onChange={e=>setLifeCustom({...lifeCustom,kg:e.target.value.replace(/[^0-9.]/g,"")})} />
+          <input style={{width:52}} inputMode="numeric" placeholder="×" value={lifeCustom.reps} onChange={e=>setLifeCustom({...lifeCustom,reps:e.target.value.replace(/[^0-9]/g,"")})} />
+          <button className="sm" onClick={()=>{ if(lifeCustom.name.trim()&&lifeCustom.kg){ addLife(lifeCustom.name.trim(), lifeCustom.kg, lifeCustom.reps||1); setLifeCustom({name:"",kg:"",reps:"1"});} }}>Add</button>
+        </div>
+        {life.length>0 && (
+          <div className="col mt12" style={{gap:6}}>
+            {life.map((l,i)=>(
+              <div key={i} className="row between small">
+                <span>{l.name} <span className="muted">({l.weight_kg}kg × {l.reps})</span></span>
+                <span className="row" style={{gap:8}}>
+                  <span className="mono" style={{color:"var(--blue)"}}>{l.volume_kg}kg</span>
+                  <button className="sm ghost" style={{minHeight:28,padding:"0 8px"}} onClick={()=>setLife(life.filter((_,idx)=>idx!==i))}>✗</button>
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="row between mt12">
+          <span className="muted small">Life sub-total</span>
+          <span className="mono" style={{fontWeight:700,color:"var(--blue)"}}>{lifeTotal}kg</span>
+        </div>
+        <hr className="divider" />
+        <div className="row between">
+          <span style={{fontWeight:600}}>Combined total</span>
+          <span className="mono" style={{fontWeight:800,fontSize:18}}>{combined}kg</span>
+        </div>
+      </div>
+
+      {/* Diet */}
+      <div className="card">
+        <h3>Diet check-in</h3>
+        <label className="field mt12">Protein estimate
+          <input inputMode="numeric" placeholder="grams — rough estimate is fine" value={protein} onChange={e=>setProtein(e.target.value.replace(/[^0-9]/g,""))} />
+        </label>
+        <div className="mt12">
+          <div className="small muted mb8">Friction today?</div>
+          <Segment options={yesNo} value={friction} variant={friction?"no":"yes"} onChange={setFriction} />
+        </div>
+        {friction && (
+          <div className="row wrap mt12" style={{gap:6}}>
+            {FRICTION_TYPES.map(f=>(
+              <button key={f} className={"sm " + (frictionType===f?"":"ghost")} style={frictionType===f?{background:"var(--amber)",color:"#1a1300",borderColor:"var(--amber)"}:{}} onClick={()=>setFrictionType(f)}>{f}</button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Daily context */}
+      <div className="card">
+        <h3>Daily context</h3>
+        <div className="col mt12" style={{gap:14}}>
+          <div><div className="small muted mb8">Energy</div><Segment options={energyOpts} value={energy} variant="energy" onChange={setEnergy} /></div>
+          <div><div className="small muted mb8">Water {settings.waterDaily}L</div><Segment options={yesNo} value={water} variant={water?"yes":"no"} onChange={setWater} /></div>
+          <div className="row" style={{gap:10}}>
+            <div className="grow"><div className="small muted mb8">Elvanse</div><Segment options={yesNo} value={elvanse} variant="health" onChange={setElvanse} /></div>
+            <div className="grow"><div className="small muted mb8">Estrodot</div><Segment options={yesNo} value={estrodot} variant="health" onChange={setEstrodot} /></div>
+          </div>
+          <div><div className="small muted mb8">Sunlight</div>
+            <Segment options={[{label:"Outdoors",value:"outdoors"},{label:"Mostly indoors",value:"indoors"}]} value={sunlight} onChange={setSunlight} />
+          </div>
+          <div><div className="small muted mb8">Work stress felt</div><Segment options={energyOpts} value={stress} onChange={setStress} /></div>
+          <label className="field">Notes
+            <textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="optional" />
+          </label>
+        </div>
+      </div>
+
+      <button className="primary block" style={{position:"sticky",bottom:"calc(var(--nav-h) + env(safe-area-inset-bottom) + 8px)"}} onClick={saveDay}>Save day</button>
+    </div>
+  );
+}
+
+/* ============================================================
+   PATTERNS TAB (Module 5)
+   ============================================================ */
+function PatternsTab({ settings, logs, today }) {
+  const allLogs = Object.values(logs).sort((a,b)=>a.date.localeCompare(b.date));
+  const cal = settings.stressCalendar;
+
+  // group by ISO week (Monday key)
+  const weeks = useMemo(() => {
+    const groups = {};
+    allLogs.forEach(l => {
+      const k = mondayOf(l.date);
+      (groups[k] = groups[k] || []).push(l);
+    });
+    return Object.entries(groups).map(([k, items]) => {
+      const type = weekTypeFor(k, cal).type;
+      const tgt = weeklyTargets(type);
+      const volume = items.reduce((s,l)=>s+logVolume(l),0);
+      const protein = items.reduce((s,l)=>s+(l.diet?.protein_estimate_g||0),0);
+      const frictions = items.filter(l=>l.diet?.friction_hit).length;
+      const energy = items.reduce((s,l)=>s+(l.energy||0),0)/items.length;
+      const water = items.filter(l=>l.water_hit).length;
+      const vsTarget = tgt.volume>0 ? (volume/tgt.volume)*100 : 0;
+      return { key:k, type, volume, protein, frictions, energy, water, days:items.length, vsTarget, tgt };
+    }).sort((a,b)=>b.key.localeCompare(a.key));
+  }, [allLogs, cal]);
+
+  // this month summary
+  const month = today.slice(0,7);
+  const monthLogs = allLogs.filter(l => l.date.slice(0,7) === month);
+  const mVol = monthLogs.reduce((s,l)=>s+logVolume(l),0);
+  const mSessions = monthLogs.filter(l=>hasWorkout(l)).length;
+  const monthWeeks = weeks.filter(w => w.key.slice(0,7) === month || monthLogs.some(l=>mondayOf(l.date)===w.key));
+  const mProteinWeekAvg = monthWeeks.length ? Math.round(monthWeeks.reduce((s,w)=>s+w.protein,0)/monthWeeks.length) : 0;
+  const mFriction = monthLogs.filter(l=>l.diet?.friction_hit).length;
+  const mWater = monthLogs.filter(l=>l.water_hit).length;
+  const mEnergy = monthLogs.length ? (monthLogs.reduce((s,l)=>s+(l.energy||0),0)/monthLogs.length) : 0;
+
+  // correlations (4+ weeks)
+  const enoughData = weeks.length >= 4;
+  let corr = null;
+  if (enoughData) {
+    const highWeeks = weeks.filter(w=>w.type==="HIGH");
+    const highAvg = highWeeks.length ? Math.round(highWeeks.reduce((s,w)=>s+w.vsTarget,0)/highWeeks.length) : 0;
+    const fricW = weeks.filter(w=>w.frictions>0), cleanW = weeks.filter(w=>w.frictions===0);
+    const fricVol = fricW.length ? fricW.reduce((s,w)=>s+w.vsTarget,0)/fricW.length : 0;
+    const cleanVol = cleanW.length ? cleanW.reduce((s,w)=>s+w.vsTarget,0)/cleanW.length : 0;
+    const diff = cleanVol>0 ? Math.round((1 - fricVol/cleanVol)*100) : 0;
+    const waterDays = allLogs.filter(l=>l.water_hit), noWaterDays = allLogs.filter(l=>!l.water_hit);
+    const wE = waterDays.length ? (waterDays.reduce((s,l)=>s+l.energy,0)/waterDays.length).toFixed(1) : "—";
+    const nE = noWaterDays.length ? (noWaterDays.reduce((s,l)=>s+l.energy,0)/noWaterDays.length).toFixed(1) : "—";
+    const estDays = allLogs.filter(l=>l.estrodot_on), estLow = estDays.filter(l=>l.energy<=2);
+    const estPct = estDays.length ? Math.round((estLow.length/estDays.length)*100) : 0;
+    corr = { highAvg, diff, wE, nE, estPct };
+  }
+
+  // weekly summary markdown (latest week)
+  const summaryMd = useMemo(() => {
+    if (!weeks.length) return "";
+    const w = weeks[0];
+    const note = weekTypeFor(w.key, cal).note;
+    const frTypes = allLogs.filter(l=>mondayOf(l.date)===w.key && l.diet?.friction_hit).map(l=>l.diet.friction_type).filter(Boolean);
+    const notesTxt = allLogs.filter(l=>mondayOf(l.date)===w.key && l.work?.note).map(l=>l.work.note).join("; ");
+    return `## Ground Control — Week of ${shortDate(w.key)}\n` +
+      `Work: ${w.type} — ${note}\n` +
+      `Volume: ${Math.round(w.volume)}kg (${Math.round(w.vsTarget)}% of ${w.type} target)\n` +
+      `Protein: ${w.protein}g / ${w.tgt.protein}g target\n` +
+      `Friction: ${frTypes.length ? frTypes.join(", ") : "none"}\n` +
+      `Energy avg: ${w.energy.toFixed(1)}/5\n` +
+      `Water: ${w.water}/${w.days} days\n` +
+      `Notes: ${notesTxt || "none"}\n`;
+  }, [weeks, allLogs, cal]);
+
+  const [copyMsg, setCopyMsg] = useState("");
+
+  const rowClass = (pct) => pct>=90 ? "r-green" : pct>=60 ? "r-amber" : "r-red";
+
+  return (
+    <div>
+      <h1 className="mb8">Patterns</h1>
+
+      <div className="card">
+        <h3>This month</h3>
+        <div className="row wrap mt12" style={{gap:8}}>
+          <span className="pill"><span className="lab">Volume</span> {Math.round(mVol)}kg</span>
+          <span className="pill"><span className="lab">Sessions</span> {mSessions}</span>
+          <span className="pill"><span className="lab">Protein/wk</span> {mProteinWeekAvg}g</span>
+          <span className="pill"><span className="lab">Friction</span> {mFriction}</span>
+          <span className="pill"><span className="lab">Water</span> {mWater}/{monthLogs.length}d</span>
+          <span className="pill"><span className="lab">Energy</span> {mEnergy.toFixed(1)}/5</span>
+        </div>
+      </div>
+
+      <div className="card">
+        <h3>Week by week</h3>
+        {weeks.length === 0 && <p className="muted small mt8">No data yet.</p>}
+        {weeks.length > 0 && (
+          <table className="weeks mt8">
+            <thead><tr>
+              <th>Week</th><th>Type</th><th>Vol</th><th>vs%</th><th>Prot</th><th>Fr</th><th>En</th>
+            </tr></thead>
+            <tbody>
+              {weeks.map(w=>(
+                <tr key={w.key} className={rowClass(w.vsTarget)}>
+                  <td>{shortDate(w.key)}</td>
+                  <td>{w.type[0]}</td>
+                  <td className="num">{Math.round(w.volume)}</td>
+                  <td className="num">{Math.round(w.vsTarget)}%</td>
+                  <td className="num">{w.protein}</td>
+                  <td className="num">{w.frictions}</td>
+                  <td className="num">{w.energy.toFixed(1)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <div className="card">
+        <h3>Correlations</h3>
+        {!enoughData && <p className="muted small mt8">Patterns appear after 4 weeks of logging. Keep going.</p>}
+        {enoughData && corr && (
+          <div className="col mt8 small" style={{gap:8}}>
+            <p>HIGH weeks averaged {corr.highAvg}% of volume target.</p>
+            <p>Weeks with diet friction: {corr.diff}% lower volume than friction-free weeks.</p>
+            <p>Days water was hit: avg energy {corr.wE}/5. Days it wasn't: {corr.nE}/5.</p>
+            <p>Estrodot on + energy ≤ 2: {corr.estPct}% of Estrodot days.</p>
+          </div>
+        )}
+      </div>
+
+      <div className="card">
+        <h3>Export</h3>
+        <div className="col mt12">
+          <button className="block" onClick={async()=>{ const ok = await copyText(JSON.stringify(allLogs,null,2)); setCopyMsg(ok?"Data copied as JSON":"Copy failed"); }}>Copy data as JSON</button>
+          <button className="block" onClick={async()=>{ const ok = await copyText(summaryMd); setCopyMsg(ok?"Weekly summary copied":"Copy failed"); }}>Copy weekly summary</button>
+          {copyMsg && <p className="tiny muted">{copyMsg}</p>}
+        </div>
+        {summaryMd && <div className="codebox mt12">{summaryMd}</div>}
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   SETTINGS TAB (Module 6)
+   ============================================================ */
+function SettingsTab({ settings, saveSettings, milestones, saveMilestone, deleteMilestone, today, setLogs, setMilestones, setAlertLogs }) {
+  const [bw, setBw] = useState(String(settings.bodyWeight));
+  const [protein, setProtein] = useState(String(settings.proteinWeekly));
+  const [water, setWater] = useState(String(settings.waterDaily));
+  const [importTxt, setImportTxt] = useState("");
+  const [delConfirm, setDelConfirm] = useState("");
+  const [msg, setMsg] = useState("");
+
+  const saveNumbers = () => {
+    saveSettings({ ...settings, bodyWeight:Number(bw)||66, proteinWeekly:Number(protein)||1180, waterDaily:Number(water)||3 });
+    setMsg("Saved");
+    setTimeout(()=>setMsg(""),1500);
+  };
+
+  // volume map editing
+  const [mapState, setMapState] = useState({...settings.volumeMap});
+  const [newMapName, setNewMapName] = useState(""); const [newMapVal, setNewMapVal] = useState("");
+  const saveMap = (next) => { setMapState(next); saveSettings({ ...settings, volumeMap: next }); };
+
+  // calendar editing
+  const cal = settings.stressCalendar;
+  const updateCal = (next) => saveSettings({ ...settings, stressCalendar: next });
+
+  const [newPeriod, setNewPeriod] = useState({start:"",end:"",type:"MEDIUM",note:""});
+
+  // milestone editing (lightweight)
+  const [editM, setEditM] = useState(null);
+
+  const exportAll = async () => {
+    const dump = {
+      gc_settings: settings,
+      logs: store.keys().filter(k=>k.startsWith("log_")).reduce((o,k)=>{o[k]=store.get(k);return o;},{}),
+      milestones: milestones,
+      alert_logs: store.keys().filter(k=>k.startsWith("alert_log_")).reduce((o,k)=>{o[k]=store.get(k);return o;},{})
+    };
+    const ok = await copyText(JSON.stringify(dump,null,2));
+    setMsg(ok?"All data copied":"Copy failed"); setTimeout(()=>setMsg(""),1500);
+  };
+  const importAll = () => {
+    try {
+      const d = JSON.parse(importTxt);
+      if (d.gc_settings) store.set("gc_settings", d.gc_settings);
+      if (d.logs) Object.entries(d.logs).forEach(([k,v])=>store.set(k,v));
+      if (d.milestones) d.milestones.forEach(m=>store.set("milestone_"+m.id, m));
+      if (d.alert_logs) Object.entries(d.alert_logs).forEach(([k,v])=>store.set(k,v));
+      store.set("gc_seeded", true);
+      setMsg("Imported — reloading"); setTimeout(()=>location.reload(),700);
+    } catch (e) { setMsg("Invalid JSON"); setTimeout(()=>setMsg(""),2000); }
+  };
+  const clearAll = () => {
+    if (delConfirm !== "DELETE") return;
+    store.keys().forEach(k => { if (k.startsWith("log_")||k.startsWith("milestone_")||k.startsWith("alert_log_")||k==="gc_settings"||k==="gc_seeded"||k==="push_subscription") store.del(k); });
+    location.reload();
+  };
+
+  return (
+    <div>
+      <h1 className="mb8">Settings</h1>
+
+      <div className="card">
+        <h3>Targets</h3>
+        <div className="col mt12">
+          <label className="field">Body weight (kg)
+            <input inputMode="numeric" value={bw} onChange={e=>setBw(e.target.value.replace(/[^0-9.]/g,""))} />
+          </label>
+          <label className="field">Weekly protein target (g)
+            <input inputMode="numeric" value={protein} onChange={e=>setProtein(e.target.value.replace(/[^0-9]/g,""))} />
+          </label>
+          <label className="field">Water daily target (L)
+            <input inputMode="numeric" value={water} onChange={e=>setWater(e.target.value.replace(/[^0-9.]/g,""))} />
+          </label>
+          <button className="primary block" onClick={saveNumbers}>Save targets</button>
+        </div>
+      </div>
+
+      <div className="card">
+        <h3>Exercise volume map (kg/rep)</h3>
+        <div className="col mt12" style={{gap:8}}>
+          {Object.entries(mapState).map(([name,val])=>(
+            <div key={name} className="row between">
+              <span className="small">{name}</span>
+              <span className="row" style={{gap:6}}>
+                <input style={{width:70}} inputMode="numeric" value={val} onChange={e=>saveMap({...mapState,[name]:Number(e.target.value.replace(/[^0-9.]/g,""))||0})} />
+                <button className="sm ghost" onClick={()=>{ const n={...mapState}; delete n[name]; saveMap(n); }}>✗</button>
+              </span>
+            </div>
+          ))}
+        </div>
+        <div className="row mt12" style={{gap:6}}>
+          <input className="grow" placeholder="exercise" value={newMapName} onChange={e=>setNewMapName(e.target.value)} />
+          <input style={{width:70}} inputMode="numeric" placeholder="kg" value={newMapVal} onChange={e=>setNewMapVal(e.target.value.replace(/[^0-9.]/g,""))} />
+          <button className="sm" onClick={()=>{ if(newMapName.trim()&&newMapVal){ saveMap({...mapState,[newMapName.trim()]:Number(newMapVal)}); setNewMapName("");setNewMapVal(""); } }}>Add</button>
+        </div>
+      </div>
+
+      <div className="card">
+        <h3>Stress calendar</h3>
+        <div className="col mt12" style={{gap:8}}>
+          {cal.map((p,i)=>(
+            <div key={i} className="list-item">
+              <div className="col gap4">
+                <span className="small"><span className={"badge "+p.type} style={{marginRight:6}}>{p.type}</span>{shortDate(p.start)}–{shortDate(p.end)}</span>
+                <span className="tiny muted">{p.note}</span>
+              </div>
+              <button className="sm ghost" onClick={()=>updateCal(cal.filter((_,idx)=>idx!==i))}>✗</button>
+            </div>
+          ))}
+        </div>
+        <hr className="divider" />
+        <div className="col" style={{gap:8}}>
+          <div className="row" style={{gap:6}}>
+            <input type="date" value={newPeriod.start} onChange={e=>setNewPeriod({...newPeriod,start:e.target.value})} />
+            <input type="date" value={newPeriod.end} onChange={e=>setNewPeriod({...newPeriod,end:e.target.value})} />
+          </div>
+          <div className="row" style={{gap:6}}>
+            <select value={newPeriod.type} onChange={e=>setNewPeriod({...newPeriod,type:e.target.value})} style={{width:120}}>
+              <option>HIGH</option><option>MEDIUM</option><option>LOW</option>
+            </select>
+            <input className="grow" placeholder="note" value={newPeriod.note} onChange={e=>setNewPeriod({...newPeriod,note:e.target.value})} />
+          </div>
+          <button className="sm block" onClick={()=>{ if(newPeriod.start&&newPeriod.end){ updateCal([...cal,newPeriod].sort((a,b)=>a.start.localeCompare(b.start))); setNewPeriod({start:"",end:"",type:"MEDIUM",note:""}); } }}>+ Add period</button>
+        </div>
+      </div>
+
+      <div className="card">
+        <h3>Milestones</h3>
+        <div className="col mt12" style={{gap:8}}>
+          {milestones.map(m=>(
+            <div key={m.id} className="list-item">
+              <div className="col gap4">
+                <span className="small" style={{fontWeight:600}}>{m.name}</span>
+                <span className="tiny muted">{m.project} · {m.type} · {effectiveFire(m, today)}</span>
+              </div>
+              <button className="sm ghost" onClick={()=>{ deleteMilestone(m.id); }}>✗</button>
+            </div>
+          ))}
+        </div>
+        <hr className="divider" />
+        <MilestoneAdder onAdd={(m)=>saveMilestone(m)} />
+      </div>
+
+      <div className="card">
+        <h3>Data</h3>
+        <div className="col mt12">
+          <button className="block" onClick={exportAll}>Export all data</button>
+          <label className="field">Import data (paste JSON)
+            <textarea value={importTxt} onChange={e=>setImportTxt(e.target.value)} placeholder='{"gc_settings":...}' />
+          </label>
+          <button className="block" onClick={importAll} disabled={!importTxt.trim()}>Import data</button>
+          {msg && <p className="tiny muted">{msg}</p>}
+        </div>
+        <hr className="divider" />
+        <div className="col">
+          <p className="tiny muted">Type DELETE to clear all data.</p>
+          <div className="row" style={{gap:8}}>
+            <input className="grow" value={delConfirm} onChange={e=>setDelConfirm(e.target.value)} placeholder="DELETE" />
+            <button className="danger" disabled={delConfirm!=="DELETE"} onClick={clearAll}>Clear</button>
+          </div>
+        </div>
+      </div>
+
+      <p className="tiny muted" style={{textAlign:"center"}}>Ground Control · open weekly to refresh the alert schedule.</p>
+    </div>
+  );
+}
+
+function MilestoneAdder({ onAdd }) {
+  const [open, setOpen] = useState(false);
+  const [f, setF] = useState({ name:"", project:"Trading", trigger:"", action:"", context:"" });
+  if (!open) return <button className="sm block" onClick={()=>setOpen(true)}>+ Add milestone</button>;
+  return (
+    <div className="col" style={{gap:8}}>
+      <input placeholder="name" value={f.name} onChange={e=>setF({...f,name:e.target.value})} />
+      <div className="row" style={{gap:6}}>
+        <input className="grow" placeholder="project" value={f.project} onChange={e=>setF({...f,project:e.target.value})} />
+        <input type="date" value={f.trigger} onChange={e=>setF({...f,trigger:e.target.value})} />
+      </div>
+      <textarea placeholder="action required" value={f.action} onChange={e=>setF({...f,action:e.target.value})} />
+      <input placeholder="context (one fact)" value={f.context} onChange={e=>setF({...f,context:e.target.value})} />
+      <div className="row" style={{gap:8}}>
+        <button className="primary grow" disabled={!f.name||!f.trigger} onClick={()=>{
+          const id = f.name.toLowerCase().replace(/[^a-z0-9]+/g,"_").slice(0,24) + "_" + Date.now().toString(36).slice(-4);
+          onAdd({ id, project:f.project||"Trading", name:f.name, type:"date", trigger:f.trigger, action:f.action, context:f.context, drive_file:"portfolio_dashboard" });
+          setF({name:"",project:"Trading",trigger:"",action:"",context:""}); setOpen(false);
+        }}>Add</button>
+        <button className="ghost" onClick={()=>setOpen(false)}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+seedIfNeeded();
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
