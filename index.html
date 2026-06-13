@@ -261,6 +261,15 @@
   .ex-row .vol { text-align: right; color: var(--text-secondary); font-size: 13px; }
   .ex-row input { text-align: center; padding: 8px; }
 
+  /* per-set exercise editor */
+  .exg { padding: 12px 0; border-bottom: 1px solid var(--border); }
+  .exg:last-of-type { border-bottom: 0; }
+  .set-row { display: grid; grid-template-columns: 16px 1fr 12px 1fr 58px 34px; gap: 6px; align-items: center; }
+  .set-row input { text-align: center; padding: 8px; min-height: 42px; }
+  .set-row .vol { text-align: right; color: var(--text-secondary); }
+  .set-row .setx { min-height: 34px; padding: 0; width: 34px; }
+  .addset { margin-top: 8px; min-height: 36px; }
+
   .preset-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
   .preset-grid button { justify-content: flex-start; }
 
@@ -1254,15 +1263,23 @@ function DayEditor({ date, base, settings, saveLog, saveSettings, logs, today, c
   // Pre-filled rows come from the exercise volume map, so anything added in
   // Settings shows up here ready to log.
   const exerciseNames = Object.keys(map);
+  // Default working weight: push-ups = 50% body weight, everything else the map.
+  const defWeight = (name) => name === "Push-ups"
+    ? Math.round((Number(settings.bodyWeight)||0) * 0.5)
+    : (map[name] != null ? map[name] : 0);
 
-  // Initialise editable draft from the selected day.
+  // Each exercise holds one or more sets {weight, reps} for progressive load.
+  const toSets = (e, name) => {
+    if (e && Array.isArray(e.sets) && e.sets.length)
+      return e.sets.map(s => ({ weight: String(s.weight), reps: String(s.reps) }));
+    if (e && e.reps)  // legacy {name, reps, volume_kg}: recover the per-rep weight
+      return [{ weight: String(e.volume_kg && e.reps ? Math.round(e.volume_kg / e.reps) : defWeight(name)), reps: String(e.reps) }];
+    return [{ weight: String(defWeight(name)), reps: "" }];
+  };
   const initExercises = () => {
     const saved = base.workout?.exercises || [];
-    const rows = exerciseNames.map(n => {
-      const f = saved.find(e => e.name === n);
-      return { name: n, reps: f ? String(f.reps) : "" };
-    });
-    saved.filter(e => !exerciseNames.includes(e.name)).forEach(e => rows.push({ name:e.name, reps:String(e.reps) }));
+    const rows = exerciseNames.map(n => ({ name: n, sets: toSets(saved.find(e => e.name === n), n) }));
+    saved.filter(e => !exerciseNames.includes(e.name)).forEach(e => rows.push({ name: e.name, sets: toSets(e, e.name) }));
     return rows;
   };
   const [rows, setRows] = useState(initExercises);
@@ -1282,21 +1299,29 @@ function DayEditor({ date, base, settings, saveLog, saveSettings, logs, today, c
 
   // custom exercise / life inputs
   const [newExName, setNewExName] = useState("");
+  const [newExWeight, setNewExWeight] = useState("");
   const [newExReps, setNewExReps] = useState("");
   const [lifeCustom, setLifeCustom] = useState({ name:"", kg:"", reps:"1" });
 
-  // Push-ups scale with body weight (50% of body weight per rep); others use the map.
-  const perRep = (name) => name === "Push-ups" ? Math.round((Number(bw)||0) * 0.5) : (map[name] != null ? map[name] : 0);
-  const repVol = (name, reps) => Math.round((Number(reps)||0) * perRep(name));
-  const workoutTotal = rows.reduce((s,r)=> s + repVol(r.name, r.reps), 0);
+  const num = (v) => v.replace(/[^0-9.]/g, "");
+  const setVol = (s) => Math.round((Number(s.weight)||0) * (Number(s.reps)||0));
+  const rowVol = (r) => r.sets.reduce((a,s)=> a + setVol(s), 0);
+  const workoutTotal = rows.reduce((s,r)=> s + rowVol(r), 0);
   const lifeTotal = life.reduce((s,l)=> s + (l.volume_kg||0), 0);
   const combined = workoutTotal + lifeTotal;
 
-  const setReps = (i, v) => setRows(rows.map((r,idx)=> idx===i?{...r,reps:v.replace(/[^0-9]/g,"")}:r));
+  const updateSet = (ri, si, field, val) =>
+    setRows(rows.map((r,i)=> i!==ri ? r : { ...r, sets: r.sets.map((s,j)=> j!==si ? s : { ...s, [field]: num(val) }) }));
+  const addSet = (ri) => setRows(rows.map((r,i)=> {
+    if (i!==ri) return r;
+    const last = r.sets[r.sets.length-1] || { weight:"", reps:"" };
+    return { ...r, sets: [...r.sets, { weight: last.weight, reps: "" }] };
+  }));
+  const removeSet = (ri, si) => setRows(rows.map((r,i)=> i!==ri ? r : (r.sets.length>1 ? { ...r, sets: r.sets.filter((_,j)=>j!==si) } : r)));
   const addCustomEx = () => {
     if (!newExName.trim()) return;
-    setRows([...rows, { name:newExName.trim(), reps:newExReps.replace(/[^0-9]/g,"") }]);
-    setNewExName(""); setNewExReps("");
+    setRows([...rows, { name: newExName.trim(), sets: [{ weight: num(newExWeight), reps: num(newExReps) }] }]);
+    setNewExName(""); setNewExWeight(""); setNewExReps("");
   };
   const addLife = (name, kg, reps) => {
     const w = Number(kg)||0, r = Number(reps)||1;
@@ -1311,8 +1336,17 @@ function DayEditor({ date, base, settings, saveLog, saveSettings, logs, today, c
   ];
 
   const saveDay = () => {
-    const exercises = rows.filter(r => (Number(r.reps)||0) > 0)
-      .map(r => ({ name:r.name, reps:Number(r.reps), volume_kg: repVol(r.name, r.reps) }));
+    const exercises = rows.map(r => {
+      const sets = r.sets
+        .map(s => ({ weight: Number(s.weight)||0, reps: Number(s.reps)||0 }))
+        .filter(s => s.reps > 0);
+      if (!sets.length) return null;
+      return {
+        name: r.name, sets,
+        reps: sets.reduce((a,s)=> a + s.reps, 0),
+        volume_kg: Math.round(sets.reduce((a,s)=> a + s.weight * s.reps, 0))
+      };
+    }).filter(Boolean);
     const total = exercises.reduce((s,e)=>s+e.volume_kg,0) + lifeTotal;
     const log = {
       date: date,
@@ -1347,19 +1381,36 @@ function DayEditor({ date, base, settings, saveLog, saveSettings, logs, today, c
             <button className="sm" onClick={()=>setEditBw(false)}>Set</button>
           </div>
         )}
-        <div className="col mt12" style={{gap:10}}>
-          {rows.map((r,i)=>(
-            <div key={i} className="ex-row">
-              <span className="small">{r.name}</span>
-              <input inputMode="numeric" placeholder="reps" value={r.reps} onChange={e=>setReps(i, e.target.value)} />
-              <span className="vol mono">{repVol(r.name, r.reps)}kg</span>
+        <div className="col mt12" style={{gap:0}}>
+          {rows.map((r,ri)=>(
+            <div key={ri} className="exg">
+              <div className="row between">
+                <span className="small" style={{fontWeight:600}}>{r.name}</span>
+                <span className="mono small muted">{rowVol(r)}kg</span>
+              </div>
+              <div className="col mt8" style={{gap:6}}>
+                {r.sets.map((s,si)=>(
+                  <div key={si} className="set-row">
+                    <span className="tiny muted">{si+1}</span>
+                    <input inputMode="decimal" placeholder="kg" value={s.weight} onChange={e=>updateSet(ri,si,"weight",e.target.value)} />
+                    <span className="tiny muted">×</span>
+                    <input inputMode="numeric" placeholder="reps" value={s.reps} onChange={e=>updateSet(ri,si,"reps",e.target.value)} />
+                    <span className="vol mono tiny">{setVol(s)}kg</span>
+                    {r.sets.length>1
+                      ? <button className="sm ghost setx" onClick={()=>removeSet(ri,si)}>✗</button>
+                      : <span className="setx" />}
+                  </div>
+                ))}
+              </div>
+              <button className="sm ghost addset" onClick={()=>{ haptic(8); addSet(ri); }}>+ set</button>
             </div>
           ))}
         </div>
         <hr className="divider" />
-        <div className="row" style={{gap:8}}>
+        <div className="row" style={{gap:6}}>
           <input className="grow" placeholder="exercise name" value={newExName} onChange={e=>setNewExName(e.target.value)} />
-          <input style={{width:80}} inputMode="numeric" placeholder="reps" value={newExReps} onChange={e=>setNewExReps(e.target.value.replace(/[^0-9]/g,""))} />
+          <input style={{width:60}} inputMode="decimal" placeholder="kg" value={newExWeight} onChange={e=>setNewExWeight(e.target.value.replace(/[^0-9.]/g,""))} />
+          <input style={{width:56}} inputMode="numeric" placeholder="reps" value={newExReps} onChange={e=>setNewExReps(e.target.value.replace(/[^0-9]/g,""))} />
           <button className="sm" onClick={addCustomEx}>Add</button>
         </div>
         <div className="row between mt12">
