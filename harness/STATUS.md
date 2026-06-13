@@ -18,8 +18,8 @@
 
 **Stage:** 2 — REVIEWERS (v1)
 **Iteration:** v1
-**One-line state:** Stage 1 generator complete (Drive OAuth + VAPID push implemented,
-syntax-clean, artifact + decision log written). Next: run 3 blind reviewers.
+**One-line state:** Stage 2 in progress. Maintainability + adversary reviews on disk;
+correctness review still running (background subagent). Then Stage 3 adjudication.
 
 ---
 
