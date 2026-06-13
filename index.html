@@ -540,6 +540,20 @@ const FOCUS_OPTIONS = [
 // Win categories (item 5). Default General. Editable in Settings.
 const WIN_CATEGORIES = ["Tech", "Household", "People & Work", "Planning Ahead", "General"];
 
+// Integrations (phase 2): direct Google Drive OAuth write-back + background
+// push via VAPID. Both stay OFF until the user supplies credentials in Settings,
+// so the app ships unchanged (copy/paste logs + client-side scheduling) by default.
+const DEFAULT_DRIVE = {
+  clientId: "",       // Google OAuth 2.0 Web client id (public; safe in a static client). NO secret.
+  fileId: "",         // cached Drive fileId of the append-only log (resolved on first write)
+  fileName: "ground_control_portfolio_log.md"
+};
+const DEFAULT_PUSH = {
+  endpoint: "",       // base URL of the companion push server (see /push-server)
+  vapidPublicKey: "", // server's VAPID public key (base64url) — public by design
+  subscribed: false
+};
+
 const DEFAULT_SETTINGS = {
   bodyWeight: 66,
   proteinWeekly: 1180,
@@ -549,6 +563,8 @@ const DEFAULT_SETTINGS = {
   focusOptions: FOCUS_OPTIONS.slice(),
   winCategories: WIN_CATEGORIES.slice(),
   lastWinCategory: "General",
+  drive: { ...DEFAULT_DRIVE },
+  push: { ...DEFAULT_PUSH },
   notifPermission: "default",
   notifAsked: false,
   theme: "hotpink"
@@ -838,6 +854,270 @@ const getCoachMessageAPI = async (context) => {
 };
 */
 
+/* ============================================================
+   INTEGRATIONS (phase 2) — Google Drive OAuth write-back + Web Push (VAPID)
+
+   Both are inert until the user configures credentials in Settings; with no
+   credentials the app behaves exactly as before (copy/paste + in-app alerts).
+
+   SECURITY-RELEVANT DESIGN NOTES (read before changing):
+   - Drive uses the Google Identity Services *token model* with a PUBLIC OAuth
+     client id and NO client secret. A static site cannot keep a secret, so we
+     use the browser-native token flow. The access token lives in MEMORY ONLY
+     (never localStorage) and is re-requested on expiry. There is deliberately
+     NO refresh token in the browser — persisting one in a static client is the
+     classic long-lived-credential leak, so we avoid it entirely.
+   - Scope is the NARROWEST that works: drive.file (per-file access to items the
+     app itself creates/opens), never the broad `drive` scope. Blast radius if
+     a token leaks is one app-owned log file, not the user's whole Drive.
+   - Web Push genuinely needs a server: the VAPID *private* key must never reach
+     the client, and a push must be sendable while the app is closed. The client
+     here only (1) subscribes and (2) hands the subscription + schedule to a
+     companion server (see /push-server). The public VAPID key is public by design.
+   ============================================================ */
+
+function loadScriptOnce(src) {
+  return new Promise((resolve, reject) => {
+    if ([...document.scripts].some(s => s.src === src)) return resolve();
+    const el = document.createElement("script");
+    el.src = src; el.async = true; el.defer = true;
+    el.onload = () => resolve();
+    el.onerror = () => reject(new Error("Could not load " + src + " (offline or blocked)."));
+    document.head.appendChild(el);
+  });
+}
+
+const googleDrive = (() => {
+  const GIS = "https://accounts.google.com/gsi/client";
+  const SCOPE = "https://www.googleapis.com/auth/drive.file";
+  let tokenClient = null;
+  let clientIdUsed = "";
+  let token = null;     // { value, exp } — in MEMORY ONLY, never persisted
+  let pending = null;   // { resolve, reject } for the in-flight token request
+  let fileId = "";      // resolved Drive file id, cached in-memory across writes
+
+  async function ensureClient(clientId) {
+    if (!clientId) throw new Error("No Google client id configured.");
+    await loadScriptOnce(GIS);
+    if (!(window.google && google.accounts && google.accounts.oauth2))
+      throw new Error("Google Identity Services unavailable.");
+    if (!tokenClient || clientIdUsed !== clientId) {
+      tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: clientId, scope: SCOPE,
+        callback: (resp) => {
+          if (!pending) return;
+          if (resp && resp.access_token) {
+            token = { value: resp.access_token, exp: Date.now() + (resp.expires_in || 3600) * 1000 };
+            pending.resolve(token.value);
+          } else {
+            pending.reject(new Error((resp && resp.error) || "Authorisation failed."));
+          }
+          pending = null;
+        },
+        error_callback: (err) => {
+          if (pending) { pending.reject(new Error((err && err.message) || "Authorisation was cancelled.")); pending = null; }
+        }
+      });
+      clientIdUsed = clientId;
+    }
+  }
+
+  async function getToken(clientId, interactive) {
+    await ensureClient(clientId);
+    if (token && token.exp - 60000 > Date.now()) return token.value;
+    return new Promise((resolve, reject) => {
+      // Sequential use only (one alert write at a time); a new request supersedes any stale one.
+      if (pending) pending.reject(new Error("Superseded by a newer auth request."));
+      pending = { resolve, reject };
+      // prompt:"" attempts silent re-auth if already granted; "consent" forces the dialog.
+      try { tokenClient.requestAccessToken({ prompt: interactive ? "consent" : "" }); }
+      catch (e) { pending = null; reject(e); }
+    });
+  }
+
+  async function api(url, opts, clientId) {
+    opts = opts || {};
+    let t = await getToken(clientId, false);
+    const call = (tok) => fetch(url, { ...opts, headers: { ...(opts.headers || {}), Authorization: "Bearer " + tok } });
+    let res = await call(t);
+    if (res.status === 401) {        // token rejected — force one fresh interactive grant
+      token = null;
+      t = await getToken(clientId, true);
+      res = await call(t);
+    }
+    return res;
+  }
+
+  function rememberId(settings, saveSettings, id) {
+    fileId = id;   // module cache so a second write doesn't depend on a React re-render
+    const cur = store.get("gc_settings", settings) || settings;   // merge into the freshest settings, not a stale snapshot
+    if (((cur.drive || {}).fileId) !== id) saveSettings({ ...cur, drive: { ...(cur.drive || {}), fileId: id } });
+  }
+
+  async function resolveFile(settings, saveSettings) {
+    const d = settings.drive || {};
+    const cid = d.clientId;
+    const known = fileId || d.fileId;   // prefer the in-memory id, fall back to settings
+    if (known) {                        // cached id still alive?
+      const r = await api(`https://www.googleapis.com/drive/v3/files/${known}?fields=id,trashed`, {}, cid);
+      if (r.ok) { const j = await r.json(); if (!j.trashed) { rememberId(settings, saveSettings, known); return known; } }
+    }
+    // find by the app's marker so re-installs re-link the same file (files.list under
+    // drive.file returns only app-created files — exactly our own log)
+    const q = encodeURIComponent("appProperties has { key='groundControl' and value='portfolioLog' } and trashed=false");
+    const find = await api(`https://www.googleapis.com/drive/v3/files?q=${q}&spaces=drive&fields=files(id,name)`, {}, cid);
+    if (find.ok) {
+      const j = await find.json();
+      if (j.files && j.files.length) { rememberId(settings, saveSettings, j.files[0].id); return j.files[0].id; }
+    }
+    // otherwise create an empty file (metadata only). Two-step create-then-write
+    // avoids the multipart/related upload pitfall (a FormData body would send
+    // multipart/form-data, which the Drive multipart endpoint rejects). The first
+    // appendMarkdown seeds the header + entry via a plain media write.
+    const meta = { name: d.fileName || "ground_control_portfolio_log.md", mimeType: "text/markdown", appProperties: { groundControl: "portfolioLog" } };
+    const create = await api("https://www.googleapis.com/drive/v3/files?fields=id",
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(meta) }, cid);
+    if (!create.ok) throw new Error("Could not create the Drive log file (" + create.status + ").");
+    const cj = await create.json();
+    rememberId(settings, saveSettings, cj.id);
+    return cj.id;
+  }
+
+  return {
+    configured(settings) { return !!(settings.drive && settings.drive.clientId); },
+    // Validate access by requesting a token interactively (the Settings "Connect" button).
+    async connect(settings) {
+      const cid = settings.drive && settings.drive.clientId;
+      await getToken(cid, true);
+      return true;
+    },
+    disconnect(settings, saveSettings) {
+      if (token && window.google && google.accounts && google.accounts.oauth2) {
+        try { google.accounts.oauth2.revoke(token.value, () => {}); } catch (e) {}
+      }
+      token = null;
+      fileId = "";
+      saveSettings({ ...settings, drive: { ...(settings.drive || {}), fileId: "" } });
+    },
+    // Append a markdown block (read-modify-write — Drive has no native append).
+    async appendMarkdown(text, settings, saveSettings) {
+      const cid = settings.drive && settings.drive.clientId;
+      if (!cid) return { ok: false, error: "Drive is not configured." };
+      try {
+        const id = await resolveFile(settings, saveSettings);
+        const cur = await api(`https://www.googleapis.com/drive/v3/files/${id}?alt=media`, {}, cid);
+        // A failed read must NOT fall through to an empty body — that would make the
+        // PATCH below overwrite the whole file. Only a 200 with empty content is a
+        // genuinely new/empty file (seed the header); any other status aborts.
+        if (!cur.ok) return { ok: false, error: "Could not read the Drive log (" + cur.status + "); not overwriting." };
+        let body = await cur.text();
+        if (!body) body = "# Ground Control — Portfolio Log\n";   // seed header on first write
+        const sep = body.endsWith("\n") ? "\n" : "\n\n";
+        const next = body + sep + text + "\n";
+        const upd = await api(`https://www.googleapis.com/upload/drive/v3/files/${id}?uploadType=media`,
+          { method: "PATCH", headers: { "Content-Type": "text/markdown" }, body: next }, cid);
+        if (!upd.ok) return { ok: false, error: "Drive write failed (" + upd.status + ")." };
+        return { ok: true };
+      } catch (e) {
+        return { ok: false, error: e.message || "Drive write failed." };
+      }
+    }
+  };
+})();
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(base64);
+  const out = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+  return out;
+}
+
+const webpush = {
+  supported() {
+    return "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+  },
+  configured(settings) {
+    return !!(settings.push && settings.push.endpoint && settings.push.vapidPublicKey);
+  },
+  base(settings) { return (settings.push.endpoint || "").replace(/\/$/, ""); },
+  scheduleBody(settings, sub, milestones) {
+    return JSON.stringify({
+      subscription: sub,
+      // Only what the server needs to schedule and show a minimal notification —
+      // NOT the detailed action text (that stays off the server; shown in-app on tap).
+      milestones: (milestones || [])
+        .map(m => ({ id: m.id, name: m.name, project: m.project, fire: effectiveFire(m, todayStr()) }))
+        .filter(x => x.fire)
+    });
+  },
+  async subscribe(settings, saveSettings) {
+    if (!this.supported()) return { ok: false, error: "Push is not supported on this browser." };
+    if (!this.configured(settings)) return { ok: false, error: "Push server not configured." };
+    let perm = "default";
+    try { perm = await Notification.requestPermission(); } catch (e) {}
+    if (perm !== "granted") return { ok: false, error: "Notification permission " + perm + "." };
+    let reg;
+    try { reg = await navigator.serviceWorker.ready; } catch (e) { return { ok: false, error: "Service worker not ready." }; }
+    let sub;
+    try {
+      sub = await reg.pushManager.getSubscription();
+      if (!sub) {
+        sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(settings.push.vapidPublicKey)
+        });
+      }
+    } catch (e) { return { ok: false, error: "Could not subscribe (check the VAPID public key)." }; }
+    const subJson = sub.toJSON();
+    store.set("push_subscription", subJson);
+    try {
+      const res = await fetch(this.base(settings) + "/subscribe", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: this.scheduleBody(settings, subJson, loadMilestones())
+      });
+      if (!res.ok) return { ok: false, error: "Server rejected the subscription (" + res.status + ")." };
+    } catch (e) { return { ok: false, error: "Could not reach the push server." }; }
+    saveSettings({ ...settings, push: { ...settings.push, subscribed: true } });
+    return { ok: true };
+  },
+  async unsubscribe(settings, saveSettings) {
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      if (sub) {
+        await fetch(this.base(settings) + "/unsubscribe", {
+          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ endpoint: sub.endpoint })
+        }).catch(() => {});
+        await sub.unsubscribe().catch(() => {});
+      }
+    } catch (e) {}
+    store.del("push_subscription");
+    saveSettings({ ...settings, push: { ...(settings.push || {}), subscribed: false } });
+    return { ok: true };
+  },
+  // Best-effort: push the latest milestone schedule so the server fires at the right
+  // times. Reads the LIVE subscription (not the stored copy) so that if the push
+  // service rotated the subscription while the app was closed, the next open
+  // re-registers the current endpoint and heals the server's stale record.
+  async syncSchedule(settings) {
+    if (!this.configured(settings) || !(settings.push && settings.push.subscribed)) return;
+    let sub = null;
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const live = await reg.pushManager.getSubscription();
+      if (live) { sub = live.toJSON(); store.set("push_subscription", sub); }
+    } catch (e) {}
+    if (!sub) sub = store.get("push_subscription");
+    if (!sub) return;
+    try {
+      await fetch(this.base(settings) + "/subscribe", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: this.scheduleBody(settings, sub, loadMilestones())
+      });
+    } catch (e) {}
+  }
+};
+
 /* empty daily log, with defaults pre-filled for the given week type */
 function emptyLog(date, type) {
   return {
@@ -964,6 +1244,8 @@ function seedIfNeeded() {
     if (!s.focusOptions)    { s.focusOptions = FOCUS_OPTIONS.slice(); changed = true; }
     if (!s.winCategories)   { s.winCategories = WIN_CATEGORIES.slice(); changed = true; }
     if (!s.lastWinCategory) { s.lastWinCategory = "General"; changed = true; }
+    if (!s.drive)           { s.drive = { ...DEFAULT_DRIVE }; changed = true; }
+    if (!s.push)            { s.push = { ...DEFAULT_PUSH }; changed = true; }
     if (changed) store.set("gc_settings", s);
   }
 }
@@ -988,8 +1270,12 @@ function loadAlertLogs() {
 }
 /* one combined dump of everything for export/import */
 function buildExportDump() {
+  // Strip transient/resolvable integration fields so a shared backup carries no
+  // Drive file target (fileId re-resolves on next write).
+  const s = store.get("gc_settings");
+  const safeSettings = s ? { ...s, drive: s.drive ? { ...s.drive, fileId: "" } : s.drive } : s;
   return {
-    gc_settings: store.get("gc_settings"),
+    gc_settings: safeSettings,
     gc_events: store.get("gc_events", []),
     logs: store.keys().filter(k=>k.startsWith("log_")).reduce((o,k)=>{ o[k]=store.get(k); return o; }, {}),
     milestones: loadMilestones(),
@@ -1199,14 +1485,25 @@ function App() {
 
   /* ---- service worker registration + notification deep-link wiring ---- */
   useEffect(() => {
+    let onSwMessage = null;
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("sw.js").catch(()=>{});
-      navigator.serviceWorker.addEventListener("message", (ev) => {
+      onSwMessage = (ev) => {
+        // Only trust messages from an actual service worker (not a window/port),
+        // and from our controller once one is set.
+        if (!(ev.source instanceof ServiceWorker)) return;
+        if (navigator.serviceWorker.controller && ev.source !== navigator.serviceWorker.controller) return;
         if (ev.data && ev.data.type === "NOTIFICATION_CLICK") {
           const m = loadMilestones().find(x => x.id === ev.data.id);
           if (m) { setTab("alerts"); setAlertOpen({ milestone: m }); }
         }
-      });
+        if (ev.data && ev.data.type === "PUSH_SUBSCRIPTION_CHANGED") {
+          // saveSettings is a stable useCallback; settings read fresh from storage.
+          const s = store.get("gc_settings", DEFAULT_SETTINGS);
+          if (s.push && s.push.subscribed) webpush.subscribe(s, saveSettings);
+        }
+      };
+      navigator.serviceWorker.addEventListener("message", onSwMessage);
     }
     // deep-link from a cold open: /?alert=<id>
     const params = new URLSearchParams(location.search);
@@ -1216,6 +1513,7 @@ function App() {
       if (m) { setTab("alerts"); setAlertOpen({ milestone: m }); }
       history.replaceState({}, "", location.pathname);
     }
+    return () => { if (onSwMessage) navigator.serviceWorker.removeEventListener("message", onSwMessage); };
   }, []);
 
   /* ---- client-side scheduling: re-arm timers on open (Module 1) ----
@@ -1244,6 +1542,8 @@ function App() {
         timers.current.push(t);
       }
     });
+    // If background push is on, keep the server's copy of the schedule current.
+    webpush.syncSchedule(store.get("gc_settings", settings));
     return () => { timers.current.forEach(t => clearTimeout(t)); };
   }, [milestones, today]);
 
@@ -1324,6 +1624,7 @@ function App() {
         <AlertScreen
           milestone={alertOpen.milestone}
           settings={settings}
+          saveSettings={saveSettings}
           recordAlert={recordAlert}
           saveMilestone={saveMilestone}
           celebrate={celebrate}
@@ -1903,12 +2204,28 @@ function AlertsTab({ milestones, upcoming, alertLogs, setAlertOpen, today }) {
 }
 
 /* Full-screen alert action card + Drive write-back */
-function AlertScreen({ milestone: m, settings, recordAlert, saveMilestone, celebrate, onClose }) {
+function AlertScreen({ milestone: m, settings, saveSettings, recordAlert, saveMilestone, celebrate, onClose }) {
   const [mode, setMode] = useState("card"); // card | confirm | dismiss | drive
   const [note, setNote] = useState("");
   const [reason, setReason] = useState("");
   const [response, setResponse] = useState(null);
   const [copied, setCopied] = useState(false);
+  const [driveState, setDriveState] = useState("idle"); // idle | writing | done
+  const [driveErr, setDriveErr] = useState("");
+  const writingRef = useRef(false);
+
+  const writeToDrive = async () => {
+    if (writingRef.current || driveState !== "idle") return;  // synchronous guard — a double-click can fire before the button disables
+    writingRef.current = true;
+    setDriveErr(""); setDriveState("writing");
+    try {
+      const r = await googleDrive.appendMarkdown(markdown, settings, saveSettings);
+      if (r.ok) setDriveState("done");
+      else { setDriveState("idle"); setDriveErr(r.error || "Write failed."); }
+    } finally {
+      writingRef.current = false;
+    }
+  };
 
   const buildMarkdown = (resp, text) => {
     const now = new Date();
@@ -1941,6 +2258,7 @@ function AlertScreen({ milestone: m, settings, recordAlert, saveMilestone, celeb
   };
 
   const markdown = response ? buildMarkdown(response, response==="Confirmed" ? note.trim() : reason.trim()) : "";
+  const driveConfigured = googleDrive.configured(settings);
 
   return (
     <div className="overlay">
@@ -1990,12 +2308,25 @@ function AlertScreen({ milestone: m, settings, recordAlert, saveMilestone, celeb
         {mode === "drive" && (
           <div>
             <h2>Write to Drive</h2>
-            <p className="small muted mt8">Copy this to your portfolio dashboard. Direct Drive write (OAuth) lands in phase 2.</p>
+            <p className="small muted mt8">
+              {driveConfigured
+                ? "Append this entry to your Drive portfolio log, or copy it."
+                : "Copy this to your portfolio dashboard. Connect Google Drive in Settings to write directly."}
+            </p>
             <div className="codebox mt12">{markdown}</div>
-            <button className="primary block mt12" onClick={async()=>{ const ok = await copyText(markdown); setCopied(ok); }}>
+            {driveConfigured && (
+              <button className="primary block mt12" disabled={driveState !== "idle"} onClick={writeToDrive}>
+                {driveState === "writing" ? "Writing to Drive…" : driveState === "done" ? "Written to Drive ✓" : "Write to Drive"}
+              </button>
+            )}
+            {driveErr && <div className="banner warn mt8">{driveErr} Copy it instead.</div>}
+            <button className={driveConfigured ? "block mt8" : "primary block mt12"}
+              onClick={async()=>{ const ok = await copyText(markdown); setCopied(ok); }}>
               {copied ? "Copied" : "Copy log entry"}
             </button>
-            <button className="block mt8" onClick={()=>window.open("https://drive.google.com","_blank")}>Open Drive</button>
+            {!driveConfigured && (
+              <button className="block mt8" onClick={()=>window.open("https://drive.google.com","_blank")}>Open Drive</button>
+            )}
             <button className="ghost block mt8" onClick={onClose}>Done</button>
           </div>
         )}
@@ -2556,6 +2887,37 @@ function SettingsTab({ settings, saveSettings, milestones, saveMilestone, delete
   const [delConfirm, setDelConfirm] = useState("");
   const [msg, setMsg] = useState("");
 
+  // integrations (phase 2): Drive OAuth + VAPID push config
+  const [driveId, setDriveId] = useState((settings.drive && settings.drive.clientId) || "");
+  const [pushUrl, setPushUrl] = useState((settings.push && settings.push.endpoint) || "");
+  const [vapidKey, setVapidKey] = useState((settings.push && settings.push.vapidPublicKey) || "");
+  const [intMsg, setIntMsg] = useState("");
+  const intTimer = useRef(null);
+  const holdIntMsg = (text) => { if (intTimer.current) clearTimeout(intTimer.current); setIntMsg(text); }; // pending; no auto-clear
+  const flashIntMsg = (text, ms = 2600) => { holdIntMsg(text); intTimer.current = setTimeout(() => setIntMsg(""), ms); };
+  useEffect(() => () => { if (intTimer.current) clearTimeout(intTimer.current); }, []);
+
+  const connectDrive = async () => {
+    const next = { ...settings, drive: { ...(settings.drive || {}), clientId: driveId.trim() } };
+    saveSettings(next); holdIntMsg("Connecting to Drive…");
+    try { await googleDrive.connect(next); flashIntMsg("Drive connected."); }
+    catch (e) { flashIntMsg("Drive: " + (e.message || "failed.")); }
+  };
+  const disconnectDrive = () => {
+    googleDrive.disconnect(settings, saveSettings);
+    flashIntMsg("Drive disconnected.");
+  };
+  const enablePush = async () => {
+    const next = { ...settings, push: { ...(settings.push || {}), endpoint: pushUrl.trim(), vapidPublicKey: vapidKey.trim() } };
+    saveSettings(next); holdIntMsg("Enabling background push…");
+    const r = await webpush.subscribe(next, saveSettings);
+    flashIntMsg(r.ok ? "Background push enabled." : "Push: " + r.error, 3200);
+  };
+  const disablePush = async () => {
+    await webpush.unsubscribe(settings, saveSettings);
+    flashIntMsg("Background push disabled.");
+  };
+
   const saveNumbers = () => {
     saveSettings({ ...settings, bodyWeight:Number(bw)||66, proteinWeekly:Number(protein)||1180, waterDaily:Number(water)||3 });
     setMsg("Saved");
@@ -2621,6 +2983,38 @@ function SettingsTab({ settings, saveSettings, milestones, saveMilestone, delete
             </button>
           ))}
         </div>
+      </div>
+
+      <div className="card">
+        <h3>Integrations</h3>
+        <p className="tiny muted mt8">Optional, and off until configured. Without them the app still works — copy/paste logs and in-app alerts while open.</p>
+
+        <div className="small mt12" style={{fontWeight:700,color:"var(--text-primary)"}}>Google Drive write-back</div>
+        <p className="tiny muted mt8">Append confirmed trading actions straight to a Drive log. Uses a public OAuth client id (no secret) and the per-file drive.file scope, so it can only touch its own log file.</p>
+        <label className="field mt8">OAuth client id
+          <input placeholder="xxxxx.apps.googleusercontent.com" value={driveId} onChange={e=>setDriveId(e.target.value.trim())} />
+        </label>
+        <div className="row mt8" style={{gap:8}}>
+          <button className="primary grow" disabled={!driveId.trim()} onClick={connectDrive}>Connect Drive</button>
+          <button className="ghost" onClick={disconnectDrive}>Disconnect</button>
+        </div>
+        {settings.drive && settings.drive.fileId && <p className="tiny muted mt8">Log file linked.</p>}
+
+        <div className="small mt12" style={{fontWeight:700,color:"var(--text-primary)"}}>Background push (VAPID)</div>
+        <p className="tiny muted mt8">Fires trading alerts when the app is fully closed. Needs the companion push server (see /push-server) — paste its URL and public VAPID key.</p>
+        <label className="field mt8">Push server URL
+          <input placeholder="https://your-push-server.example/api" value={pushUrl} onChange={e=>setPushUrl(e.target.value.trim())} />
+        </label>
+        <label className="field mt8">VAPID public key
+          <input placeholder="base64url public key" value={vapidKey} onChange={e=>setVapidKey(e.target.value.trim())} />
+        </label>
+        <div className="row mt8" style={{gap:8}}>
+          {settings.push && settings.push.subscribed
+            ? <button className="grow" onClick={disablePush}>Disable background push</button>
+            : <button className="primary grow" disabled={!pushUrl.trim() || !vapidKey.trim()} onClick={enablePush}>Enable background push</button>}
+        </div>
+        {intMsg && <div className="banner info mt8">{intMsg}</div>}
+        <p className="tiny muted mt8">Without the server, in-app alerts still fire while Ground Control is open or backgrounded.</p>
       </div>
 
       <div className="card">

@@ -19,6 +19,7 @@ input, never a blank form.
 | `netlify.toml` | Netlify deployment config (SPA fallback, headers) |
 | `icons/` | App icons (192/512 standard + maskable, 180 apple-touch) |
 | `make_icons.py` | Pure-stdlib generator that produced the icons (re-run to regenerate) |
+| `push-server/` | Optional companion Web Push (VAPID) server for background push when the app is closed |
 
 ## Deploy
 
@@ -66,16 +67,39 @@ trading and check-in alerts).
   milestone's next-fire date and arms `setTimeout` timers that ask the service
   worker to show a notification. Tapping a notification deep-links into the
   full-screen alert card (Confirm / Snooze 24h / Dismiss).
-- **Drive write-back (MVP):** Confirm/Dismiss generates a structured markdown log
-  block you copy to your portfolio dashboard, plus an **Open Drive** button.
+- **Drive write-back:** Confirm/Dismiss always generates a structured markdown log
+  block you can copy. If you connect Google Drive (**Settings → Integrations**),
+  the alert also offers **Write to Drive** — a direct OAuth append to a dedicated
+  log file. It uses a public OAuth client id (no secret) and the narrow
+  `drive.file` scope, so the app can only ever touch its own log file; the access
+  token is held in memory only and never persisted.
+- **Background push:** connect the companion **push server** (`push-server/`) under
+  Settings → Integrations to receive trading alerts when the app is fully closed.
+  The server holds the VAPID private key and delivers on schedule; the PWA only
+  subscribes and hands over its schedule. Without it, the client-side fallback
+  below applies.
+
+## Integrations (optional, off by default)
+
+Both are configured in **Settings → Integrations** and stay inert until you add
+credentials — the app ships and works unchanged without them.
+
+- **Google Drive write-back** needs a Google OAuth 2.0 **Web** client id (no
+  secret). Add your PWA origin to the client's authorised JavaScript origins,
+  paste the client id, and press *Connect Drive*.
+- **Background push** needs the companion server in `push-server/` (see its
+  README): generate VAPID keys, deploy it, then paste the server URL and the
+  **public** VAPID key and press *Enable background push*.
 
 ## Known limitations (MVP)
 
-- **Background push:** client-side `setTimeout` scheduling only fires while the
-  PWA is open or backgrounded. True push when the app is fully closed needs a
-  backend Web Push server with VAPID keys (phase 2). Open the app weekly to
-  refresh the schedule.
-- **Drive write is copy/paste**, not a direct API write. OAuth-based append to
-  the linked file is phase 2 (marked with a TODO in `index.html`).
+- **Background push requires the companion server.** A static PWA cannot deliver
+  push when closed — the Web Push spec needs a server holding the VAPID private
+  key. If you don't deploy `push-server/`, the app falls back to client-side
+  `setTimeout` alerts that only fire while it is open or backgrounded; open it
+  weekly to refresh the schedule.
+- **Drive direct-write needs the CDN-loaded Google Identity Services script** and
+  network access; where that is blocked (or Drive isn't connected) the alert
+  falls back to copy/paste.
 - **API coach layer** is wired but disabled — static rules ship by default
   (browser calls to the model API need a key-bearing proxy; see the TODO block).
