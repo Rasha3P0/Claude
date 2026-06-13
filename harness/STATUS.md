@@ -16,10 +16,10 @@
 
 ## CURRENT STATE
 
-**Stage:** 2 — REVIEWERS (v1)
-**Iteration:** v1
-**One-line state:** Stage 2 in progress. Maintainability + adversary reviews on disk;
-correctness review still running (background subagent). Then Stage 3 adjudication.
+**Stage:** 1 — GENERATOR (v2)  ·  loop 2 of max 3
+**Iteration:** v2
+**One-line state:** Stage 3 v1 adjudicated → ITERATE. change_list_v1.md written
+(14 must-fix; 2 rejected, ~6 deferred). Implementing v2 against the change list.
 
 ---
 
@@ -29,11 +29,11 @@ correctness review still running (background subagent). Then Stage 3 adjudicatio
 |-------|---------|--------|
 | Scaffold | `harness/STATUS.md`, `harness/README.md` | DONE |
 | 1 · Generator (v1) | `harness/artifact_v1/`, `harness/decision_log_v1.md` | DONE |
-| 2 · Reviewers (v1) | `harness/review_correctness.md`, `review_adversary.md`, `review_maintainability.md` | IN PROGRESS |
-| 3 · Adjudicator (v1) | `harness/change_list_v1.md` OR `harness/final_notes.md` | pending |
-| 1 · Generator (v2) | `harness/artifact_v2/`, `harness/decision_log_v2.md` | (only if ITERATE) |
-| 2 · Reviewers (v2) | … | (only if ITERATE) |
-| 3 · Adjudicator (v2) | … | (only if ITERATE) |
+| 2 · Reviewers (v1) | `harness/review_correctness.md`, `review_adversary.md`, `review_maintainability.md` | DONE (A:8, B:7, C:4 findings) |
+| 3 · Adjudicator (v1) | `harness/change_list_v1.md` | DONE → ITERATE |
+| 1 · Generator (v2) | `harness/artifact_v2/`, `harness/decision_log_v2.md` | IN PROGRESS |
+| 2 · Reviewers (v2) | `harness/review_*_v2.md` | pending |
+| 3 · Adjudicator (v2) | `harness/change_list_v2.md` OR `harness/final_notes.md` | pending |
 
 ---
 
