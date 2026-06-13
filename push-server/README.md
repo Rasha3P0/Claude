@@ -32,8 +32,9 @@ VAPID_PUBLIC_KEY=<public key from gen-keys>
 VAPID_PRIVATE_KEY=<private key from gen-keys>   # SECRET — server only
 VAPID_SUBJECT=mailto:you@example.com
 ADMIN_TOKEN=<a long random string>              # protects POST /send
-ALLOW_ORIGIN=https://your-ground-control.app    # your PWA origin, for CORS
+ALLOW_ORIGIN=https://your-ground-control.app    # REQUIRED — your PWA origin; server refuses to start if unset
 STORE_FILE=./subs.json                          # optional; swap for a real DB
+MAX_SUBSCRIPTIONS=1000                           # optional; cap on stored subscriptions (default 1000)
 ```
 Run it:
 ```bash
@@ -67,6 +68,10 @@ press *Enable background push*.
 - **Schedule freshness:** the PWA re-posts its schedule to `/subscribe` on every
   open (and whenever milestones change), so the server's copy can lag if the user
   never opens the app. Acceptable for the documented "open weekly" usage.
-- **Rate limiting / abuse:** `/subscribe` is unauthenticated (browsers must be
-  able to self-register). Add rate limiting and a max-subscriptions cap at the
-  edge if you expose this publicly.
+- **Auth on subscribe/unsubscribe:** both are unauthenticated (browsers must be
+  able to self-register). A `MAX_SUBSCRIPTIONS` cap and the 16KB body limit blunt
+  storage-bloat DoS, and CORS is locked to your origin. For a publicly-exposed
+  deployment, add per-subscription ownership proof (a server-issued token returned
+  from `/subscribe` and required on `/unsubscribe`) and edge rate limiting — anyone
+  who learns a subscription's endpoint URL can otherwise overwrite its schedule or
+  delete it. This is a known limitation of the reference server.

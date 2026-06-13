@@ -16,10 +16,11 @@
 
 ## CURRENT STATE
 
-**Stage:** 1 — GENERATOR (v2)  ·  loop 2 of max 3
+**Stage:** 2 — REVIEWERS (v2)  ·  loop 2 of max 3
 **Iteration:** v2
-**One-line state:** Stage 3 v1 adjudicated → ITERATE. change_list_v1.md written
-(14 must-fix; 2 rejected, ~6 deferred). Implementing v2 against the change list.
+**One-line state:** Stage 1 v2 complete — all 14 change-list items applied,
+syntax-clean, artifact_v2 + decision_log_v2 written. Next: focused re-review
+(correctness + adversary) of v2, then adjudicate (expect CONVERGED).
 
 ---
 
@@ -31,8 +32,8 @@
 | 1 · Generator (v1) | `harness/artifact_v1/`, `harness/decision_log_v1.md` | DONE |
 | 2 · Reviewers (v1) | `harness/review_correctness.md`, `review_adversary.md`, `review_maintainability.md` | DONE (A:8, B:7, C:4 findings) |
 | 3 · Adjudicator (v1) | `harness/change_list_v1.md` | DONE → ITERATE |
-| 1 · Generator (v2) | `harness/artifact_v2/`, `harness/decision_log_v2.md` | IN PROGRESS |
-| 2 · Reviewers (v2) | `harness/review_*_v2.md` | pending |
+| 1 · Generator (v2) | `harness/artifact_v2/`, `harness/decision_log_v2.md` | DONE |
+| 2 · Reviewers (v2) | `harness/review_correctness_v2.md`, `harness/review_adversary_v2.md` | IN PROGRESS (2 focused reviewers — cheaper loop per harness §8) |
 | 3 · Adjudicator (v2) | `harness/change_list_v2.md` OR `harness/final_notes.md` | pending |
 
 ---

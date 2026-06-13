@@ -24,6 +24,7 @@
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 const webpush = require("web-push");
 
 const PORT = process.env.PORT || 8080;
@@ -31,14 +32,26 @@ const PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || "";
 const PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || "";
 const SUBJECT = process.env.VAPID_SUBJECT || "mailto:admin@example.com";
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || "";
-const ALLOW_ORIGIN = process.env.ALLOW_ORIGIN || "*";
+const ALLOW_ORIGIN = process.env.ALLOW_ORIGIN;                      // required — no wildcard default (fail closed)
 const STORE_FILE = process.env.STORE_FILE || path.join(__dirname, "subs.json");
+const MAX_SUBSCRIPTIONS = Number(process.env.MAX_SUBSCRIPTIONS) || 1000;
 
 if (!PUBLIC_KEY || !PRIVATE_KEY) {
   console.error("Missing VAPID keys. Run `npm run gen-keys` and set VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY.");
   process.exit(1);
 }
+if (!ALLOW_ORIGIN) {
+  console.error("Missing ALLOW_ORIGIN. Set it to your PWA origin (e.g. https://my-app.example) — refusing to start with an open CORS policy.");
+  process.exit(1);
+}
 webpush.setVapidDetails(SUBJECT, PUBLIC_KEY, PRIVATE_KEY);
+
+// Constant-time compare so the admin token can't be recovered via response timing.
+function safeEqual(a, b) {
+  if (!a || !b) return false;
+  const ba = Buffer.from(String(a)), bb = Buffer.from(String(b));
+  return ba.length === bb.length && crypto.timingSafeEqual(ba, bb);
+}
 
 /* ---- subscription store (file-backed; swap for a real DB in production) ---- */
 const store = {
@@ -52,7 +65,9 @@ const store = {
   upsert(sub, milestones) {
     const k = sub.endpoint;
     const prev = this.data[k] || { sent: {} };
-    this.data[k] = { subscription: sub, milestones: Array.isArray(milestones) ? milestones : (prev.milestones || []), sent: prev.sent || {} };
+    const sent = prev.sent || {};
+    pruneSent(sent);   // keep the dedupe map from growing without bound
+    this.data[k] = { subscription: sub, milestones: Array.isArray(milestones) ? milestones : (prev.milestones || []), sent };
     this.save();
   },
   remove(endpoint) { delete this.data[endpoint]; this.save(); }
@@ -61,6 +76,11 @@ store.load();
 
 /* ---- helpers ---- */
 function isoToday() { return new Date().toISOString().slice(0, 10); }
+
+function pruneSent(sent, days = 30) {
+  const cutoff = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+  for (const key of Object.keys(sent)) if (sent[key] < cutoff) delete sent[key];
+}
 
 function validSubscription(s) {
   return s && typeof s.endpoint === "string" && /^https:\/\//.test(s.endpoint) &&
@@ -87,27 +107,34 @@ function send(res, code, obj) {
 }
 
 /* ---- the actual delivery: send any milestone whose fire date has arrived ---- */
+let running = false;   // guard so the hourly tick and a /send cron can't double-deliver
 async function runDue() {
-  const today = isoToday();
-  let sent = 0, pruned = 0;
-  for (const k of Object.keys(store.data)) {
-    const rec = store.data[k];
-    for (const m of rec.milestones || []) {
-      if (!m.fire || m.fire > today) continue;          // not due yet
-      const dedupe = m.id + "@" + m.fire;
-      if (rec.sent[dedupe]) continue;                    // already delivered
-      const payload = JSON.stringify({ id: m.id, project: m.project, title: m.name, body: (m.action || "").slice(0, 140) });
-      try {
-        await webpush.sendNotification(rec.subscription, payload);
-        rec.sent[dedupe] = today; sent++;
-      } catch (err) {
-        if (err.statusCode === 404 || err.statusCode === 410) { store.remove(k); pruned++; break; } // subscription gone
-        else console.error("send error", err.statusCode, err.body || err.message);
+  if (running) return { skipped: true };
+  running = true;
+  try {
+    const today = isoToday();
+    let sent = 0, pruned = 0;
+    for (const k of Object.keys(store.data)) {
+      const rec = store.data[k];
+      for (const m of rec.milestones || []) {
+        if (!m.fire || m.fire > today) continue;          // not due yet
+        const dedupe = m.id + "@" + m.fire;
+        if (rec.sent[dedupe]) continue;                    // already delivered
+        const payload = JSON.stringify({ id: m.id, project: m.project, title: m.name, body: (m.action || "").slice(0, 140) });
+        try {
+          await webpush.sendNotification(rec.subscription, payload);
+          rec.sent[dedupe] = today; sent++;
+        } catch (err) {
+          if (err.statusCode === 404 || err.statusCode === 410) { store.remove(k); pruned++; break; } // subscription gone
+          else console.error("send error", err.statusCode, err.body || err.message);
+        }
       }
     }
+    if (sent || pruned) store.save();
+    return { sent, pruned, subs: Object.keys(store.data).length };
+  } finally {
+    running = false;
   }
-  if (sent || pruned) store.save();
-  return { sent, pruned, subs: Object.keys(store.data).length };
 }
 
 /* ---- HTTP ---- */
@@ -123,6 +150,8 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && url.pathname === "/subscribe") {
       const body = await readJson(req);
       if (!validSubscription(body.subscription)) return send(res, 400, { error: "invalid subscription" });
+      const isNew = !store.data[body.subscription.endpoint];
+      if (isNew && Object.keys(store.data).length >= MAX_SUBSCRIPTIONS) return send(res, 429, { error: "subscription limit reached" });
       store.upsert(body.subscription, body.milestones);
       return send(res, 200, { ok: true });
     }
@@ -136,7 +165,7 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "POST" && url.pathname === "/send") {
       const auth = (req.headers.authorization || "").replace(/^Bearer\s+/i, "");
-      if (!ADMIN_TOKEN || auth !== ADMIN_TOKEN) return send(res, 401, { error: "unauthorized" });
+      if (!ADMIN_TOKEN || !safeEqual(auth, ADMIN_TOKEN)) return send(res, 401, { error: "unauthorized" });
       const result = await runDue();
       return send(res, 200, { ok: true, ...result });
     }
