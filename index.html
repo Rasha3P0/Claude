@@ -1251,16 +1251,18 @@ function LogTab({ settings, today, saveLog, saveSettings, logs, celebrate, setTa
 
 function DayEditor({ date, base, settings, saveLog, saveSettings, logs, today, celebrate, setTab, isPast }) {
   const map = settings.volumeMap;
-  const baseNames = ["Deadlifts","OH Press","Squats","Push-ups","KB Swings"];
+  // Pre-filled rows come from the exercise volume map, so anything added in
+  // Settings shows up here ready to log.
+  const exerciseNames = Object.keys(map);
 
   // Initialise editable draft from the selected day.
   const initExercises = () => {
     const saved = base.workout?.exercises || [];
-    const rows = baseNames.map(n => {
+    const rows = exerciseNames.map(n => {
       const f = saved.find(e => e.name === n);
       return { name: n, reps: f ? String(f.reps) : "" };
     });
-    saved.filter(e => !baseNames.includes(e.name)).forEach(e => rows.push({ name:e.name, reps:String(e.reps) }));
+    saved.filter(e => !exerciseNames.includes(e.name)).forEach(e => rows.push({ name:e.name, reps:String(e.reps) }));
     return rows;
   };
   const [rows, setRows] = useState(initExercises);
