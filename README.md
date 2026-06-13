@@ -49,10 +49,19 @@ trading and check-in alerts).
 
 - **Storage:** everything lives in `localStorage` (keys: `gc_settings`,
   `gc_seeded`, `log_YYYY-MM-DD`, `milestone_[id]`, `alert_log_[id]_[ts]`,
-  `push_subscription`). Seed data (3 June sessions, 8 trading milestones, the
-  work-stress calendar) loads once on first launch.
-- **Week type** (HIGH / MEDIUM / LOW) is read from the stress calendar and drives
-  the targets, the orientation block, and the bottom-nav active colour.
+  `push_subscription`, `gc_events`, `gc_milestone_seen`). Daily logs may carry an
+  optional `wins: [{id,text,category,ts}]` array and an `experiment` record;
+  missing keys on legacy entries are treated as empty. Seed data (3 June sessions,
+  8 trading milestones, the work-stress calendar, a 16-item wins set for the
+  current day, and three July personal events) loads once on first launch.
+- **Week type** (HIGH / MEDIUM / LOW) is the **higher of work-stress and
+  life-stress** — work comes from the stress calendar, life from a heavy-event
+  cluster in `gc_events`. The effective type drives the targets, orientation
+  block, coach, and bottom-nav active colour; Today shows both when they differ.
+- **Today** also carries an editable quick-win focus list, a Wins card (capture +
+  history), and a rotating daily experiment recorded for Patterns correlation.
+- **Streaks** reuse the reward layer: the per-day moment is unchanged, and 3/7/14/
+  30-day (and beyond) milestones add a larger celebration on top, once each.
 - **Notifications:** scheduled client-side. On every open the app recomputes each
   milestone's next-fire date and arms `setTimeout` timers that ask the service
   worker to show a notification. Tapping a notification deep-links into the

@@ -422,6 +422,37 @@
   .reward-sub { font-size: 15px; color: var(--accent-1); font-weight: 800; margin-top: 5px; }
   .confetti { position: absolute; top: -16px; width: 9px; height: 15px; border-radius: 2px; animation: fall linear forwards; }
   @keyframes fall { to { transform: translateY(112vh) rotate(760deg); opacity: 0.15; } }
+
+  /* streak milestone — the larger reward moment (item 4), layered on top */
+  .reward.big { z-index: 90; background: radial-gradient(circle at 50% 40%, var(--glow-1), rgba(9,12,18,0.94)); }
+  .reward.big .checkmark { width: 116px; height: 116px; font-size: 56px;
+    filter: drop-shadow(0 0 10px rgba(255,150,40,0.6)); box-shadow: 0 0 64px var(--glow-1); }
+  .reward.big .reward-title { font-size: 28px; }
+
+  /* work/life mismatch line (item 6) */
+  .mismatch b { font-weight: 800; }
+  .t-HIGH { color: var(--high); } .t-MEDIUM { color: var(--medium); } .t-LOW { color: var(--low); }
+
+  /* upcoming personal events row */
+  .upcoming-row { width: 100%; justify-content: space-between; text-align: left; height: auto;
+    min-height: 46px; padding: 9px 12px; background: var(--surface-2); }
+  .upcoming-row:active { border-color: var(--blue); }
+
+  /* wins (item 5) */
+  .wins-count { width: 100%; flex-direction: column; gap: 0; height: auto; min-height: 64px;
+    margin-top: 10px; padding: 8px; background: rgba(0,0,0,0.22); border: 1px solid var(--border); }
+  .wins-count .bignum { font-size: 38px; line-height: 1; }
+  .win-item { display: flex; align-items: center; gap: 8px; }
+  .win-cat { flex: 0 0 auto; font-size: 10px; font-weight: 800; letter-spacing: 0.3px;
+    text-transform: uppercase; color: var(--accent-2); background: var(--surface-2);
+    border: 1px solid var(--border); border-radius: 999px; padding: 3px 8px; }
+
+  /* today's experiment (item 3) */
+  .experiment { border-left: 3px solid var(--accent-3); }
+  .experiment.on { border-left-color: var(--low); opacity: 0.9; }
+
+  /* per-exercise rest/notes (item 2) */
+  .ex-note { font-size: 14px; min-height: 40px; padding: 8px 11px; }
 </style>
 </head>
 <body>
@@ -492,12 +523,32 @@ const SEED_LOGS = [
    diet:{protein_estimate_g:130,friction_hit:false,friction_type:null},work:{stress_felt:2,note:""}}
 ];
 
+// Quick wins for the Today's focus picker (analytical, low-friction).
+// Editable in Settings (item 1) — this is the seed/default list.
+const FOCUS_OPTIONS = [
+  "Step outside for 10 minutes of daylight",
+  "One 15-minute session — that counts",
+  "Drink a full glass of water now",
+  "Five-minute tidy of one surface",
+  "Protein with the next meal",
+  "Ten push-ups, right now",
+  "Two minutes of stretching",
+  "Walk for five minutes",
+  "Write the one thing that matters today"
+];
+
+// Win categories (item 5). Default General. Editable in Settings.
+const WIN_CATEGORIES = ["Tech", "Household", "People & Work", "Planning Ahead", "General"];
+
 const DEFAULT_SETTINGS = {
   bodyWeight: 66,
   proteinWeekly: 1180,
   waterDaily: 3,
   volumeMap: DEFAULT_VOLUME_MAP,
   stressCalendar: DEFAULT_CALENDAR,
+  focusOptions: FOCUS_OPTIONS.slice(),
+  winCategories: WIN_CATEGORIES.slice(),
+  lastWinCategory: "General",
   notifPermission: "default",
   notifAsked: false,
   theme: "hotpink"
@@ -514,17 +565,53 @@ const SKINS = [
 const FRICTION_TYPES = ["Fresh veg waste","Curry fatigue","Frozen supply ran out","Batch cook skipped","Partner coordination","Prep time conflict","Other"];
 const VOLUME_BASELINE = 2800;
 
-// Quick wins for the Today's focus picker (analytical, low-friction)
-const FOCUS_OPTIONS = [
-  "Step outside for 10 minutes of daylight",
-  "One 15-minute session — that counts",
-  "Drink a full glass of water now",
-  "Five-minute tidy of one surface",
-  "Protein with the next meal",
-  "Ten push-ups, right now",
-  "Two minutes of stretching",
-  "Walk for five minutes",
-  "Write the one thing that matters today"
+// Rotating "today's experiment" prompts (item 3). Analytical, ADHD-relevant,
+// one surfaces per day; whether it was tried is recorded for Patterns correlation.
+const EXPERIMENTS = [
+  { id:"morning_light",  text:"Get daylight within 30 minutes of waking" },
+  { id:"protein_first",  text:"Eat protein before the first coffee" },
+  { id:"phone_parked",   text:"Park the phone across the room during one work block" },
+  { id:"ten_min_timer",  text:"Start the hardest task with a 10-minute timer" },
+  { id:"single_task",    text:"Work one task at a time, no tab-switching, for one block" },
+  { id:"walk_break",     text:"Take one short walk between tasks" },
+  { id:"water_before",   text:"Drink a full glass of water before lunch" },
+  { id:"brain_dump",     text:"Write down open loops before starting work" },
+  { id:"stop_at",        text:"Pick a hard stop time for work today" },
+  { id:"two_min_rule",   text:"Clear any two-minute task the moment you notice it" }
+];
+
+// Wins seed (item 5), dated to the current day. NOTE: this is roughly a
+// four-hours-sleep morning on a nominal recovery day — it is the high-water
+// mark, not a daily expectation. Do not let the count set an implicit bar.
+const SEED_WINS = {
+  date: "2026-06-13",
+  wins: [
+    { category:"Tech", text:"Cracked a phone-only Claude Code workflow (GitHub + Vercel)" },
+    { category:"Tech", text:"Reframed $8 usage overage as a win vs $200/mo Max plan" },
+    { category:"Tech", text:"Set up backup free account as a usage-reset workaround" },
+    { category:"Tech", text:"Recovered from a laptop hang without losing momentum" },
+    { category:"Household", text:"Trash, recycling, food waste out" },
+    { category:"Household", text:"Laundry started, emptied, hung to dry" },
+    { category:"Household", text:"Dishwasher started" },
+    { category:"Household", text:"Kitchen islands and dining table cleared" },
+    { category:"Household", text:"Spot-cleaned kitchen corner and wall behind bin" },
+    { category:"Household", text:"Vacuumed kitchen, entryway, downstairs toilet" },
+    { category:"Household", text:"Packed Sunday swim bag early, not last-minute" },
+    { category:"People & Work", text:"Up at 6am, kicked off software release on Teams" },
+    { category:"People & Work", text:"Packed son's lunch, got him and husband out the door" },
+    { category:"People & Work", text:"Supported husband through work stress with actionable advice" },
+    { category:"People & Work", text:"Managed Fable shutdown disappointment without derailing the morning" },
+    { category:"Planning Ahead", text:"Logged the Jul 2/4/5 stress window with reminders, weeks ahead" }
+  ]
+};
+
+// Personal events / life-stress layer (item 6). Point dates that can cluster.
+// This cluster sits inside the existing Jun 24–Jul 12 LOW work week, so it is
+// the canonical test of max(work, life): that week must present as HIGH.
+const SEED_EVENTS = [
+  { date:"2026-07-02", label:"Daughter's birthday", load:"heavy", note:"" },
+  { date:"2026-07-04", label:"Son's piano concert + overnight visitor", load:"heavy", note:"" },
+  { date:"2026-07-05", label:"Family birthday lunch (in-laws, venue)", load:"heavy", note:"" }
 ];
 
 /* ============================================================
@@ -565,6 +652,87 @@ function weeklyTargets(type) {
   return { volume: 2800, protein: 1180 };
 }
 function pctOfBaseline(type) { return type==="HIGH"?40 : type==="MEDIUM"?65 : 100; }
+
+/* ============================================================
+   LIFE-STRESS LAYER (Module / item 6) — events + max(work, life)
+   ============================================================ */
+const SEV = { LOW: 0, MEDIUM: 1, HIGH: 2 };
+function maxType(a, b) { return SEV[a] >= SEV[b] ? a : b; }
+
+/* life-stress for one ISO week (Monday key), from personal events in it.
+   Cluster rule (v1): 2+ heavy events within a 4-day window → HIGH;
+   1+ heavy event → MEDIUM; else LOW. */
+function lifeStressForWeek(mondayStr, events) {
+  const start = mondayStr;
+  const e = parseISO(mondayStr); e.setDate(e.getDate() + 6);
+  const end = isoDate(e);
+  const inWeek = (events || []).filter(ev => ev.date >= start && ev.date <= end)
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const heavy = inWeek.filter(ev => ev.load === "heavy");
+  let type = heavy.length >= 1 ? "MEDIUM" : "LOW";
+  for (let i = 0; i < heavy.length; i++)
+    for (let j = i + 1; j < heavy.length; j++)
+      if (Math.abs(daysBetween(heavy[i].date, heavy[j].date)) <= 3) type = "HIGH";
+  return { type, events: inWeek, heavy };
+}
+
+/* effective week type = the higher of work-stress and life-stress.
+   Returns { type, note, work:{type,note}, life:{type,events,heavy} }. */
+function effectiveWeekFor(dateStr, calendar, events) {
+  const work = weekTypeFor(dateStr, calendar);
+  const life = lifeStressForWeek(mondayOf(dateStr), events);
+  return { type: maxType(work.type, life.type), note: work.note, work, life };
+}
+
+/* group heavy events into clusters (each step within a 4-day window).
+   A cluster with 2+ heavy events is a personal-HIGH window. */
+function heavyClusters(events) {
+  const heavy = (events || []).filter(e => e.load === "heavy")
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const groups = [];
+  let cur = [];
+  heavy.forEach(ev => {
+    if (cur.length && daysBetween(cur[cur.length - 1].date, ev.date) <= 3) cur.push(ev);
+    else { if (cur.length) groups.push(cur); cur = [ev]; }
+  });
+  if (cur.length) groups.push(cur);
+  return groups.filter(g => g.length >= 2).map(g => ({
+    start: g[0].date, end: g[g.length - 1].date,
+    events: g, labels: g.map(e => e.label)
+  }));
+}
+function clusterDateRange(c) {
+  const a = parseISO(c.start), b = parseISO(c.end);
+  const sameMonth = a.getMonth() === b.getMonth();
+  const mon = a.toLocaleDateString("en-GB", { month: "short" });
+  return sameMonth ? `${mon} ${a.getDate()}–${b.getDate()}` : `${shortDate(c.start)} – ${shortDate(c.end)}`;
+}
+
+/* ============================================================
+   WINS (item 5) — captured reality, attached to the daily log
+   ============================================================ */
+let _winSeq = 0;
+function makeWin(text, category, source) {
+  const w = { id: "w" + Date.now().toString(36) + (_winSeq++).toString(36), text, category: category || "General", ts: new Date().toISOString() };
+  if (source) w.source = source;
+  return w;
+}
+/* missing `wins` key on legacy/seed entries is treated as [] */
+function getWins(log) { return log && Array.isArray(log.wins) ? log.wins : []; }
+function normWin(s) { return (s || "").trim().toLowerCase(); }
+function winTime(ts) {
+  if (!ts || ts.indexOf("T") < 0) return "";
+  try { return new Date(ts).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }); }
+  catch (e) { return ts.slice(11, 16); }
+}
+
+/* the experiment shown on a given day — deterministic daily rotation (item 3) */
+function experimentFor(dateStr) {
+  if (!EXPERIMENTS.length) return null;
+  const d = parseISO(dateStr);
+  const doy = Math.floor((d - new Date(d.getFullYear(), 0, 0)) / 86400000);
+  return EXPERIMENTS[doy % EXPERIMENTS.length];
+}
 
 /* next-fire computation for a milestone, from a reference date string */
 function getNextFire(m, fromStr) {
@@ -633,7 +801,7 @@ function advanceMilestone(m, occurrence) {
    COACH MESSAGE — static rules, evaluated in order (Module 3)
    ============================================================ */
 function coachMessage(ctx) {
-  const { type, energy, waterHit, estrodot, workoutLogged, hour } = ctx;
+  const { type, energy, waterHit, estrodot, workoutLogged, hour, personalHigh } = ctx;
   if (estrodot && energy <= 2)
     return "Low energy is expected during the Estrodot adjustment window. This is physiological, not motivational.";
   if (type === "HIGH" && !workoutLogged && hour > 17)
@@ -648,6 +816,9 @@ function coachMessage(ctx) {
     return "Energy at 2 on a MEDIUM week. One shorter session is the realistic target. Life volume counts.";
   if (type === "LOW" && energy >= 4 && !workoutLogged)
     return "Energy available, LOW week. This is the week to push volume.";
+  // Personal HIGH window within 7 days overrides a quiet work week (item 6).
+  if (personalHigh)
+    return `Personal HIGH window approaching (${personalHigh.range}: ${personalHigh.labels}). This overrides the ${personalHigh.workType} work week — plan capacity as HIGH, not push.`;
   return "Log energy and water to get a read on today.";
 }
 
@@ -678,7 +849,8 @@ function emptyLog(date, type) {
     sunlight: "",
     workout: { exercises: [], life_volume: [], total_kg: 0 },
     diet: { protein_estimate_g: 0, friction_hit: false, friction_type: null },
-    work: { stress_felt: type === "HIGH" ? 4 : type === "MEDIUM" ? 3 : 2, note: "" }
+    work: { stress_felt: type === "HIGH" ? 4 : type === "MEDIUM" ? 3 : 2, note: "" },
+    wins: []
   };
 }
 function logVolume(log) {
@@ -710,7 +882,16 @@ function appendSet(log, name, set) {
   return l;
 }
 
+// Streak milestone tiers (item 4). 3/7/14/30 are the required moments; the
+// larger ones extend the same layer for longevity. These reuse the existing
+// reward/confetti/haptics moment — just bigger — they are not a new type.
 const STREAK_MILESTONES = [3, 7, 14, 21, 30, 50, 75, 100];
+function milestoneSub(n) {
+  const map = { 3:"Three days. The habit is forming.", 7:"A full week logged.",
+    14:"Two weeks consistent.", 21:"Three weeks in.", 30:"Thirty days. This is a system now.",
+    50:"Fifty days logged.", 75:"Seventy-five days.", 100:"One hundred days." };
+  return map[n] || `${n} days logged.`;
+}
 
 /* one rotating, data-derived insight for the Today tab (works from day one) */
 function buildInsight(logs, today, settings) {
@@ -756,11 +937,35 @@ function buildInsight(logs, today, settings) {
    SEED ON FIRST LAUNCH
    ============================================================ */
 function seedIfNeeded() {
-  if (store.get("gc_seeded")) return;
-  if (!store.get("gc_settings")) store.set("gc_settings", DEFAULT_SETTINGS);
-  SEED_LOGS.forEach(l => store.set("log_" + l.date, l));
-  DEFAULT_MILESTONES.forEach(m => store.set("milestone_" + m.id, m));
-  store.set("gc_seeded", true);
+  const fresh = !store.get("gc_seeded");
+  if (fresh) {
+    if (!store.get("gc_settings")) store.set("gc_settings", DEFAULT_SETTINGS);
+    SEED_LOGS.forEach(l => store.set("log_" + l.date, l));
+    DEFAULT_MILESTONES.forEach(m => store.set("milestone_" + m.id, m));
+    // Wins seed attaches to the current day's log so Patterns can query it.
+    const wd = SEED_WINS.date;
+    if (!store.get("log_" + wd)) {
+      const wk = effectiveWeekFor(wd, DEFAULT_CALENDAR, SEED_EVENTS);
+      const base = emptyLog(wd, wk.type);
+      base.wins = SEED_WINS.wins.map((w, i) => ({
+        id: "seed_" + i, text: w.text, category: w.category,
+        ts: `${wd}T08:${String(i).padStart(2, "0")}:00`, source: "seed"
+      }));
+      store.set("log_" + wd, base);
+    }
+    store.set("gc_seeded", true);
+  }
+  // Non-destructive migration for installs from earlier builds (PRs #1-7):
+  // add the new keys without touching existing user data.
+  if (store.get("gc_events") == null) store.set("gc_events", SEED_EVENTS);
+  const s = store.get("gc_settings");
+  if (s) {
+    let changed = false;
+    if (!s.focusOptions)    { s.focusOptions = FOCUS_OPTIONS.slice(); changed = true; }
+    if (!s.winCategories)   { s.winCategories = WIN_CATEGORIES.slice(); changed = true; }
+    if (!s.lastWinCategory) { s.lastWinCategory = "General"; changed = true; }
+    if (changed) store.set("gc_settings", s);
+  }
 }
 
 function loadAllLogs() {
@@ -773,6 +978,10 @@ function loadAllLogs() {
 function loadMilestones() {
   return store.keys().filter(k => k.startsWith("milestone_")).map(k => store.get(k)).filter(Boolean);
 }
+/* personal events (item 6) — own top-level key, kept apart from the work calendar */
+function loadEvents() {
+  return (store.get("gc_events", []) || []).slice().sort((a, b) => a.date.localeCompare(b.date));
+}
 function loadAlertLogs() {
   return store.keys().filter(k => k.startsWith("alert_log_")).map(k => store.get(k)).filter(Boolean)
     .sort((a,b)=> (b.timestamp||"").localeCompare(a.timestamp||""));
@@ -781,6 +990,7 @@ function loadAlertLogs() {
 function buildExportDump() {
   return {
     gc_settings: store.get("gc_settings"),
+    gc_events: store.get("gc_events", []),
     logs: store.keys().filter(k=>k.startsWith("log_")).reduce((o,k)=>{ o[k]=store.get(k); return o; }, {}),
     milestones: loadMilestones(),
     alert_logs: store.keys().filter(k=>k.startsWith("alert_log_")).reduce((o,k)=>{ o[k]=store.get(k); return o; }, {})
@@ -896,7 +1106,7 @@ function Ring({ label, value, target, unit, color, done }) {
 
 /* consecutive logged days ending today (or yesterday if today not yet logged) */
 function dayCounts(log) {
-  return !!log && (hasWorkout(log) || log.water_hit || log.focus_done || (log.diet && log.diet.protein_estimate_g > 0));
+  return !!log && (hasWorkout(log) || log.water_hit || log.focus_done || getWins(log).length > 0 || (log.diet && log.diet.protein_estimate_g > 0));
 }
 function computeStreak(logs, today) {
   let streak = 0;
@@ -907,21 +1117,23 @@ function computeStreak(logs, today) {
 }
 
 const CONFETTI_COLORS = ["#4dffa0", "#5cb6ff", "#c792ff", "#ffce5c", "#ff7ac6", "#42e8e0"];
-function Reward({ title, sub, onDone }) {
-  const pieces = useMemo(() => Array.from({ length: 28 }, () => ({
+/* The daily reward moment. `big` is the streak-milestone variant (item 4):
+   the same confetti/haptics layer, scaled up and held a little longer. */
+function Reward({ title, sub, big, icon, onDone }) {
+  const pieces = useMemo(() => Array.from({ length: big ? 54 : 28 }, () => ({
     left: Math.random() * 100,
     bg: CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)],
-    delay: Math.random() * 0.25,
-    dur: 1.1 + Math.random() * 0.9,
+    delay: Math.random() * (big ? 0.4 : 0.25),
+    dur: 1.1 + Math.random() * (big ? 1.3 : 0.9),
     rot: Math.random() * 360
   })), []);
   useEffect(() => {
-    haptic([14, 40, 22]);
-    const t = setTimeout(() => onDone && onDone(), 1500);
+    haptic(big ? [18, 50, 22, 50, 40] : [14, 40, 22]);
+    const t = setTimeout(() => onDone && onDone(), big ? 2600 : 1500);
     return () => clearTimeout(t);
   }, []);
   return (
-    <div className="reward" onClick={() => onDone && onDone()}>
+    <div className={"reward" + (big ? " big" : "")} onClick={() => onDone && onDone()}>
       {pieces.map((p, i) => (
         <span key={i} className="confetti" style={{
           left: p.left + "%", background: p.bg,
@@ -930,7 +1142,7 @@ function Reward({ title, sub, onDone }) {
         }} />
       ))}
       <div className="reward-card">
-        <div className="checkmark">✓</div>
+        <div className="checkmark">{icon || "✓"}</div>
         <div className="reward-title">{title}</div>
         {sub && <div className="reward-sub">{sub}</div>}
       </div>
@@ -943,22 +1155,30 @@ function Reward({ title, sub, onDone }) {
    ============================================================ */
 function App() {
   const [tab, setTab] = useState("today");
-  const [settings, setSettings] = useState(() => store.get("gc_settings", DEFAULT_SETTINGS));
+  // merge defaults so keys added in later builds (focusOptions, winCategories…) exist
+  const [settings, setSettings] = useState(() => ({ ...DEFAULT_SETTINGS, ...store.get("gc_settings", {}) }));
   const [logs, setLogs] = useState(() => loadAllLogs());
   const [milestones, setMilestones] = useState(() => loadMilestones());
+  const [events, setEvents] = useState(() => loadEvents());
   const [alertLogs, setAlertLogs] = useState(() => loadAlertLogs());
   const [alertOpen, setAlertOpen] = useState(null); // {milestone, auto}
   const [reward, setReward] = useState(null); // {title, sub}
+  const [milestoneReward, setMilestoneReward] = useState(null); // larger streak moment
   const celebrate = useCallback((r) => setReward(r || { title: "Done" }), []);
   const [showIntro, setShowIntro] = useState(() => !store.get("gc_settings", DEFAULT_SETTINGS).notifAsked);
   const today = todayStr();
-  const week = weekTypeFor(today, settings.stressCalendar);
+  // effective week type = max(work, life) — drives badge, targets, nav colour, coach
+  const week = effectiveWeekFor(today, settings.stressCalendar, events);
   const timers = useRef([]);
 
   const activeColor = week.type === "HIGH" ? "var(--high)" : week.type === "MEDIUM" ? "var(--medium)" : "var(--low)";
 
   /* persistence helpers shared with tabs */
   const saveSettings = useCallback((next) => { setSettings(next); store.set("gc_settings", next); }, []);
+  const saveEvents = useCallback((next) => {
+    const sorted = next.slice().sort((a, b) => a.date.localeCompare(b.date));
+    store.set("gc_events", sorted); setEvents(sorted);
+  }, []);
   const saveLog = useCallback((log) => {
     store.set("log_" + log.date, log);
     setLogs(prev => ({ ...prev, [log.date]: log }));
@@ -1039,6 +1259,36 @@ function App() {
   const nextAlert = upcoming.find(u => u.days >= 0) || upcoming[0];
   const pending7 = upcoming.filter(u => u.days >= 0 && u.days <= 7).length;
 
+  /* ---- upcoming personal events + nearest personal-HIGH cluster (item 6) ---- */
+  const upcomingEvents = useMemo(() =>
+    events.filter(e => e.date >= today).map(e => ({ ...e, days: daysBetween(today, e.date) }))
+  , [events, today]);
+  const nextCluster = useMemo(() => {
+    const cs = heavyClusters(events)
+      .map(c => ({ ...c, days: daysBetween(today, c.start) }))
+      .filter(c => c.end >= today)
+      .sort((a, b) => a.start.localeCompare(b.start));
+    return cs[0] || null;
+  }, [events, today]);
+
+  /* ---- streak milestone celebrations (item 4) ----
+     Reuses the existing reward layer — a larger moment on top of the per-day
+     one, never replacing it. Fires only on the day the milestone is completed
+     (today logged), so it doesn't re-fire the next morning when the streak
+     carries over. Once per (milestone, date reached); a reset and re-climb
+     celebrates again. */
+  const streak = useMemo(() => computeStreak(logs, today), [logs, today]);
+  const countedToday = dayCounts(logs[today]);
+  useEffect(() => {
+    if (!countedToday || !STREAK_MILESTONES.includes(streak)) return;
+    const seen = store.get("gc_milestone_seen", {});
+    if (seen[streak] === today) return;
+    seen[streak] = today; store.set("gc_milestone_seen", seen);
+    // delay so it layers after the per-day reward rather than clobbering it
+    const t = setTimeout(() => setMilestoneReward({ value: streak, sub: milestoneSub(streak) }), 1500);
+    return () => clearTimeout(t);
+  }, [streak, countedToday, today]);
+
   /* ---- notification permission flow ---- */
   const requestPerms = async () => {
     let perm = "default";
@@ -1049,7 +1299,7 @@ function App() {
   };
   const dismissIntro = () => { saveSettings({ ...settings, notifAsked: true }); setShowIntro(false); };
 
-  const ctxBundle = { settings, week, today, logs, milestones, alertLogs, saveSettings, saveLog, saveMilestone, deleteMilestone, recordAlert, setTab, setAlertOpen, celebrate };
+  const ctxBundle = { settings, week, today, logs, milestones, events, alertLogs, saveSettings, saveLog, saveMilestone, deleteMilestone, saveEvents, recordAlert, setTab, setAlertOpen, celebrate };
 
   return (
     <div className="app" data-skin={settings.theme || "hotpink"} style={{ "--active": activeColor }}>
@@ -1061,7 +1311,7 @@ function App() {
           <div className="banner warn">Notifications off — trading alerts won't fire. Enable in browser settings.</div>
         )}
 
-        {tab === "today" &&    <TodayTab {...ctxBundle} todayLog={todayLog} nextAlert={nextAlert} />}
+        {tab === "today" &&    <TodayTab {...ctxBundle} todayLog={todayLog} nextAlert={nextAlert} upcomingEvents={upcomingEvents} nextCluster={nextCluster} />}
         {tab === "alerts" &&   <AlertsTab {...ctxBundle} upcoming={upcoming} />}
         {tab === "log" &&      <LogTab {...ctxBundle} todayLog={todayLog} />}
         {tab === "patterns" && <PatternsTab {...ctxBundle} />}
@@ -1082,6 +1332,10 @@ function App() {
       )}
 
       {reward && <Reward title={reward.title} sub={reward.sub} onDone={() => setReward(null)} />}
+      {milestoneReward && (
+        <Reward big icon="🔥" title={`${milestoneReward.value}-day streak`} sub={milestoneReward.sub}
+          onDone={() => setMilestoneReward(null)} />
+      )}
     </div>
   );
 }
@@ -1173,14 +1427,24 @@ function QuickSetSheet({ todayLog, settings, saveLog, logs, celebrate, onClose }
   );
 }
 
-/* Today's focus — pick a quick win from a list or type your own, then bank it */
-function FocusCard({ todayLog, saveLog, celebrate }) {
+/* Today's focus — pick a quick win from a list or type your own, then bank it.
+   The option list is editable in Settings (item 1). Completing a focus also
+   drops a win (item 5), deduped against a manual win of the same text. */
+function FocusCard({ todayLog, saveLog, celebrate, options }) {
   const [picking, setPicking] = useState(false);
   const [custom, setCustom] = useState("");
+  const opts = options && options.length ? options : FOCUS_OPTIONS;
   const choose = (text) => { haptic(8); saveLog({ ...todayLog, focus: text, focus_done: false }); setPicking(false); setCustom(""); };
   const toggleDone = () => {
     const done = !todayLog.focus_done;
-    saveLog({ ...todayLog, focus_done: done });
+    let wins = getWins(todayLog);
+    if (done) {
+      if (!wins.some(w => normWin(w.text) === normWin(todayLog.focus)))
+        wins = [...wins, makeWin(todayLog.focus, "General", "focus")]; // category General; inference kept simple
+    } else {
+      wins = wins.filter(w => !(w.source === "focus" && normWin(w.text) === normWin(todayLog.focus)));
+    }
+    saveLog({ ...todayLog, focus_done: done, wins });
     if (done) { haptic([12,40,12]); celebrate && celebrate({ title: "Quick win", sub: todayLog.focus }); }
   };
 
@@ -1193,7 +1457,7 @@ function FocusCard({ todayLog, saveLog, celebrate }) {
         </div>
         <p className="tiny muted mt8">Pick one quick win, or write your own.</p>
         <div className="col mt12" style={{gap:8}}>
-          {FOCUS_OPTIONS.map(o => (
+          {opts.map(o => (
             <button key={o} className="focus-opt" onClick={()=>choose(o)}>{o}</button>
           ))}
         </div>
@@ -1218,8 +1482,196 @@ function FocusCard({ todayLog, saveLog, celebrate }) {
   );
 }
 
-function TodayTab({ settings, week, today, todayLog, saveLog, logs, celebrate, nextAlert, setAlertOpen, setTab }) {
+/* Wins (item 5) — completed reality, captured + accumulated on Today.
+   Count is large; the day's wins are listed newest-first; quick-add is ≤3 taps
+   (type, optionally pick a chip, Add). Feeds the EXISTING reward layer: the
+   first win of the day fires the per-day moment, no new celebration type.
+   The input is deliberately NOT auto-focused — popping the keyboard on a
+   dashboard-first screen would fight the "context before input" rule. */
+function WinsCard({ todayLog, saveLog, settings, saveSettings, celebrate, onHistory }) {
+  const cats = (settings.winCategories && settings.winCategories.length) ? settings.winCategories : WIN_CATEGORIES;
+  const [text, setText] = useState("");
+  const [cat, setCat] = useState(() =>
+    settings.lastWinCategory && cats.includes(settings.lastWinCategory) ? settings.lastWinCategory
+      : (cats.includes("General") ? "General" : cats[0]));
+  const wins = getWins(todayLog);
+  const shown = useCountUp(wins.length);
+  const dayList = wins.slice().reverse(); // newest first
+
+  const add = () => {
+    const t = text.trim();
+    if (!t) return;
+    const firstOfDay = wins.length === 0;
+    saveLog({ ...todayLog, wins: [...wins, makeWin(t, cat, "manual")] });
+    if (settings.lastWinCategory !== cat) saveSettings({ ...settings, lastWinCategory: cat });
+    setText(""); haptic([10,30,10]);
+    if (firstOfDay) celebrate && celebrate({ title: "Win logged", sub: cat });
+  };
+  const remove = (id) => { haptic(8); saveLog({ ...todayLog, wins: wins.filter(w => w.id !== id) }); };
+
+  return (
+    <div className="card wins">
+      <div className="row between">
+        <h3>Wins</h3>
+        <button className="ghost sm" onClick={()=>{ haptic(6); onHistory(); }}>History</button>
+      </div>
+      <button className="wins-count" onClick={()=>{ haptic(6); onHistory(); }}>
+        <span className="bignum grad mono">{Math.round(shown)}</span>
+        <span className="tiny muted">today · tap for history</span>
+      </button>
+      <div className="row mt12" style={{gap:8}}>
+        <input className="grow" placeholder="what got done" value={text}
+          onChange={e=>setText(e.target.value)}
+          onKeyDown={e=>{ if (e.key === "Enter") add(); }} />
+        <button className="sm primary" disabled={!text.trim()} onClick={add}>Add</button>
+      </div>
+      <div className="row wrap mt8" style={{gap:6}}>
+        {cats.map(c => (
+          <button key={c} className={"chip" + (c===cat ? " on" : "")} onClick={()=>{ haptic(6); setCat(c); }}>{c}</button>
+        ))}
+      </div>
+      {dayList.length > 0 && (
+        <div className="col mt12" style={{gap:6}}>
+          {dayList.map(w => (
+            <div key={w.id} className="win-item">
+              <span className="win-cat">{w.category}</span>
+              <span className="small grow">{w.text}</span>
+              <button className="sm ghost" style={{minHeight:28,padding:"0 8px"}} onClick={()=>remove(w.id)}>✗</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* Full wins history — bottom sheet, grouped by date, newest day first */
+function WinsHistorySheet({ logs, today, onClose }) {
+  const days = Object.values(logs).filter(l => getWins(l).length > 0)
+    .sort((a, b) => b.date.localeCompare(a.date));
+  const total = days.reduce((s, l) => s + getWins(l).length, 0);
+  return (
+    <div className="sheet" onClick={onClose}>
+      <div className="sheet-inner" onClick={e=>e.stopPropagation()}>
+        <div className="row between"><h2>Wins history</h2><button className="ghost sm" onClick={onClose}>Done</button></div>
+        <p className="tiny muted mt8">{total} win{total===1?"":"s"} across {days.length} day{days.length===1?"":"s"}.</p>
+        {days.length === 0 && <p className="muted small mt12">No wins logged yet.</p>}
+        <div className="col mt12" style={{gap:16}}>
+          {days.map(l => {
+            const ws = getWins(l).slice().reverse();
+            return (
+              <div key={l.date}>
+                <div className="row between">
+                  <h3>{l.date===today ? "Today" : dayName(l.date)} · {shortDate(l.date)}</h3>
+                  <span className="tiny muted">{ws.length}</span>
+                </div>
+                <div className="col mt8" style={{gap:6}}>
+                  {ws.map(w => (
+                    <div key={w.id} className="win-item">
+                      <span className="win-cat">{w.category}</span>
+                      <span className="small grow">{w.text}</span>
+                      {winTime(w.ts) && <span className="tiny muted mono">{winTime(w.ts)}</span>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* Rotating "today's experiment" (item 3). One surfaces per day; marking it
+   tried records it on the day log for Patterns correlation. */
+function ExperimentCard({ todayLog, saveLog }) {
+  const exp = experimentFor(todayLog.date);
+  if (!exp) return null;
+  const rec = todayLog.experiment && todayLog.experiment.id === exp.id ? todayLog.experiment : null;
+  const tried = !!(rec && rec.tried);
+  const toggle = () => {
+    haptic(tried ? 8 : [10,30,10]);
+    saveLog({ ...todayLog, experiment: { id: exp.id, text: exp.text, tried: !tried } });
+  };
+  return (
+    <div className={"card experiment" + (tried ? " on" : "")}>
+      <div className="row between">
+        <h3>Today's experiment</h3>
+        {tried && <span className="tiny" style={{color:"var(--accent-3)",fontWeight:700}}>tried</span>}
+      </div>
+      <p className="mt8" style={{fontWeight:650}}>{exp.text}</p>
+      <button className={"block mt12 " + (tried ? "" : "primary")} onClick={toggle}>
+        {tried ? "✓ Tried — tap to undo" : "Mark tried"}
+      </button>
+    </div>
+  );
+}
+
+/* Upcoming personal events (item 6). Next 1-2 with days-away; tap to expand.
+   A personal-HIGH cluster within 10 days is surfaced explicitly. */
+function UpcomingCard({ upcomingEvents, nextCluster, onExpand }) {
+  if (!upcomingEvents.length && !nextCluster) return null;
+  const next = upcomingEvents.slice(0, 2);
+  const highSoon = nextCluster && nextCluster.days >= 0 && nextCluster.days <= 10;
+  return (
+    <div className="card">
+      <div className="row between">
+        <h3>Upcoming</h3>
+        <button className="ghost sm" onClick={()=>{ haptic(6); onExpand(); }}>All events</button>
+      </div>
+      {highSoon && (
+        <div className="banner warn mt8">
+          <strong>{clusterDateRange(nextCluster)}: {nextCluster.labels.join(" + ")}</strong>
+          <div className="mt8">Personal HIGH window. Pre-buy frozen meals, lower volume target.</div>
+        </div>
+      )}
+      <div className="col mt8" style={{gap:8}}>
+        {next.map((e, i) => (
+          <button key={i} className="upcoming-row" onClick={()=>{ haptic(6); onExpand(); }}>
+            <span className="col gap4" style={{textAlign:"left",minWidth:0}}>
+              <span className="small" style={{fontWeight:650}}>{e.label}</span>
+              <span className="tiny muted">{e.load === "heavy" ? "heavy" : "light"} · {shortDate(e.date)}</span>
+            </span>
+            <span className="countdown" style={{color:"var(--blue)"}}>{e.days===0?"today":e.days+"d"}</span>
+          </button>
+        ))}
+        {next.length === 0 && <p className="tiny muted">No upcoming personal events.</p>}
+      </div>
+    </div>
+  );
+}
+
+/* Expanded personal-events list (bottom sheet) */
+function UpcomingEventsSheet({ events, today, onClose }) {
+  const list = events.filter(e => e.date >= today).map(e => ({ ...e, days: daysBetween(today, e.date) }));
+  const past = events.filter(e => e.date < today);
+  return (
+    <div className="sheet" onClick={onClose}>
+      <div className="sheet-inner" onClick={e=>e.stopPropagation()}>
+        <div className="row between"><h2>Personal events</h2><button className="ghost sm" onClick={onClose}>Done</button></div>
+        {list.length === 0 && <p className="muted small mt12">No upcoming events. Add them in Settings.</p>}
+        <div className="col mt12" style={{gap:8}}>
+          {list.map((e, i) => (
+            <div key={i} className="list-item">
+              <div className="col gap4">
+                <span className="small" style={{fontWeight:600}}>{e.label}</span>
+                <span className="tiny muted">{prettyDate(e.date)} · {e.load}{e.note ? ` · ${e.note}` : ""}</span>
+              </div>
+              <span className="countdown" style={{color:"var(--blue)"}}>{e.days===0?"today":e.days+"d"}</span>
+            </div>
+          ))}
+        </div>
+        {past.length > 0 && <p className="tiny muted mt12">Past events are kept and editable in Settings.</p>}
+      </div>
+    </div>
+  );
+}
+
+function TodayTab({ settings, week, today, todayLog, saveLog, saveSettings, logs, events, celebrate, nextAlert, upcomingEvents, nextCluster, setAlertOpen, setTab }) {
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [winsHistOpen, setWinsHistOpen] = useState(false);
+  const [eventsOpen, setEventsOpen] = useState(false);
   const wt = weeklyTargets(week.type);
   const volTargetDay = wt.volume / 7;
   const proTargetDay = wt.protein / 7;
@@ -1229,13 +1681,19 @@ function TodayTab({ settings, week, today, todayLog, saveLog, logs, celebrate, n
   const counted = dayCounts(todayLog);
   const workoutDone = hasWorkout(todayLog);
   const waterDone = todayLog.water_hit;
+  // work vs life mismatch — show both when they differ (item 6)
+  const mismatch = week.work.type !== week.life.type;
 
   const patch = (changes) => saveLog({ ...todayLog, ...changes });
 
   const hour = new Date().getHours();
+  // personal-HIGH window within 7 days feeds the coach (item 6)
+  const personalHigh = (nextCluster && nextCluster.days >= 0 && nextCluster.days <= 7)
+    ? { range: clusterDateRange(nextCluster), labels: nextCluster.labels.join(" + "), workType: week.work.type }
+    : null;
   const coach = coachMessage({
     type: week.type, energy: todayLog.energy, waterHit: todayLog.water_hit,
-    estrodot: todayLog.estrodot_on, workoutLogged: workoutDone, hour
+    estrodot: todayLog.estrodot_on, workoutLogged: workoutDone, hour, personalHigh
   });
   const insight = buildInsight(logs, today, settings);
 
@@ -1260,6 +1718,11 @@ function TodayTab({ settings, week, today, todayLog, saveLog, logs, celebrate, n
           <span className={"streak" + (streakUrgent ? " urgent" : "")}><span className="flame">🔥</span> {streakLine}</span>
         </div>
         <p className="small muted mt8">{dayName(today)} · {prettyDate(today)}</p>
+        {mismatch && (
+          <p className="small mt8 mismatch">
+            Work: <b className={"t-"+week.work.type}>{week.work.type}</b> · Life: <b className={"t-"+week.life.type}>{week.life.type}</b> → plan as <b className={"t-"+week.type}>{week.type}</b>
+          </p>
+        )}
         <p className="mt8" style={{fontWeight:600}}>{week.note}</p>
         <div className="row wrap mt12" style={{gap:8}}>
           <span className="pill"><span className="lab">Volume</span> {Math.round(wt.volume)}kg</span>
@@ -1281,8 +1744,15 @@ function TodayTab({ settings, week, today, todayLog, saveLog, logs, celebrate, n
         )}
       </div>
 
+      {/* Upcoming personal events — near the next-alert pill */}
+      <UpcomingCard upcomingEvents={upcomingEvents} nextCluster={nextCluster} onExpand={()=>setEventsOpen(true)} />
+
       {/* Today's focus — quick win */}
-      <FocusCard todayLog={todayLog} saveLog={saveLog} celebrate={celebrate} />
+      <FocusCard todayLog={todayLog} saveLog={saveLog} celebrate={celebrate} options={settings.focusOptions} />
+
+      {/* Wins — completed reality, below the focus list */}
+      <WinsCard todayLog={todayLog} saveLog={saveLog} settings={settings} saveSettings={saveSettings}
+        celebrate={celebrate} onHistory={()=>setWinsHistOpen(true)} />
 
       {/* Today's progress — hero rings */}
       <div className="card">
@@ -1293,6 +1763,9 @@ function TodayTab({ settings, week, today, todayLog, saveLog, logs, celebrate, n
           <Ring label="Water" done={todayLog.water_hit} color="var(--accent-3)" />
         </div>
       </div>
+
+      {/* Rotating experiment — a prompt to try today, recorded for Patterns */}
+      <ExperimentCard todayLog={todayLog} saveLog={saveLog} />
 
       {/* Rotating insight — fresh + something learned, works from day one */}
       {insight && (
@@ -1341,6 +1814,8 @@ function TodayTab({ settings, week, today, todayLog, saveLog, logs, celebrate, n
         <QuickSetSheet todayLog={todayLog} settings={settings} saveLog={saveLog} logs={logs}
           celebrate={celebrate} onClose={()=>setSheetOpen(false)} />
       )}
+      {winsHistOpen && <WinsHistorySheet logs={logs} today={today} onClose={()=>setWinsHistOpen(false)} />}
+      {eventsOpen && <UpcomingEventsSheet events={events} today={today} onClose={()=>setEventsOpen(false)} />}
     </div>
   );
 }
@@ -1532,10 +2007,10 @@ function AlertScreen({ milestone: m, settings, recordAlert, saveMilestone, celeb
 /* ============================================================
    LOG TAB (Module 4)
    ============================================================ */
-function LogTab({ settings, today, saveLog, saveSettings, logs, celebrate, setTab }) {
+function LogTab({ settings, today, saveLog, saveSettings, logs, events, celebrate, setTab }) {
   const [logDate, setLogDate] = useState(today);
   const isPast = logDate !== today;
-  const wt = weekTypeFor(logDate, settings.stressCalendar);
+  const wt = effectiveWeekFor(logDate, settings.stressCalendar, events); // badge follows max(work, life)
   const base = logs[logDate] || emptyLog(logDate, wt.type);
   const existing = !!logs[logDate];
 
@@ -1583,13 +2058,18 @@ function DayEditor({ date, base, settings, saveLog, saveSettings, logs, today, c
     const saved = base.workout?.exercises || [];
     const shown = topNames.slice();
     saved.forEach(e => { if (!shown.includes(e.name)) shown.push(e.name); });  // keep anything already logged
-    return shown.map(n => ({ name: n, sets: toSets(saved.find(e => e.name === n), n) }));
+    return shown.map(n => {
+      const e = saved.find(x => x.name === n);
+      return { name: n, sets: toSets(e, n), note: (e && e.note) || "" }; // note: optional rest/form (item 2)
+    });
   };
   const [rows, setRows] = useState(initExercises);
+  // which rows have the rest/notes field expanded — collapsed by default
+  const [openNotes, setOpenNotes] = useState({});
   const addExerciseRow = (name) => {
     if (rows.some(r => r.name === name)) return;
     haptic(8);
-    setRows([...rows, { name, sets: [{ weight: String(defWeight(name)), reps: "" }] }]);
+    setRows([...rows, { name, sets: [{ weight: String(defWeight(name)), reps: "" }], note: "" }]);
   };
   const [life, setLife] = useState(() => (base.workout?.life_volume || []).map(l => ({...l})));
   const [bw, setBw] = useState(settings.bodyWeight);
@@ -1626,9 +2106,10 @@ function DayEditor({ date, base, settings, saveLog, saveSettings, logs, today, c
     return { ...r, sets: [...r.sets, { weight: last.weight, reps: "" }] };
   }));
   const removeSet = (ri, si) => setRows(rows.map((r,i)=> i!==ri ? r : (r.sets.length>1 ? { ...r, sets: r.sets.filter((_,j)=>j!==si) } : r)));
+  const setRowNote = (ri, val) => setRows(rows.map((r,i)=> i!==ri ? r : { ...r, note: val }));
   const addCustomEx = () => {
     if (!newExName.trim()) return;
-    setRows([...rows, { name: newExName.trim(), sets: [{ weight: num(newExWeight), reps: num(newExReps) }] }]);
+    setRows([...rows, { name: newExName.trim(), sets: [{ weight: num(newExWeight), reps: num(newExReps) }], note: "" }]);
     setNewExName(""); setNewExWeight(""); setNewExReps("");
   };
   const addLife = (name, kg, reps) => {
@@ -1649,20 +2130,30 @@ function DayEditor({ date, base, settings, saveLog, saveSettings, logs, today, c
         .map(s => ({ weight: Number(s.weight)||0, reps: Number(s.reps)||0 }))
         .filter(s => s.reps > 0);
       if (!sets.length) return null;
-      return {
+      const ex = {
         name: r.name, sets,
         reps: sets.reduce((a,s)=> a + s.reps, 0),
         volume_kg: Math.round(sets.reduce((a,s)=> a + s.weight * s.reps, 0))
       };
+      if (r.note && r.note.trim()) ex.note = r.note.trim(); // keep optional — legacy entries stay clean
+      return ex;
     }).filter(Boolean);
     const total = exercises.reduce((s,e)=>s+e.volume_kg,0) + lifeTotal;
+    // Spread base first so fields the Log tab doesn't edit (focus, wins,
+    // experiment) are preserved rather than wiped.
     const log = {
+      ...base,
       date: date,
       energy, water_hit: water, elvanse_taken: elvanse, estrodot_on: estrodot, sunlight,
       workout: { exercises, life_volume: life, total_kg: total },
       diet: { protein_estimate_g: Number(protein)||0, friction_hit: friction, friction_type: friction ? (frictionType||null) : null },
       work: { stress_felt: stress, note: notes }
     };
+    // Auto-capture one deduped "session logged" win (item 5). Optional source —
+    // exactly one workout-sourced win per day, reflecting the current total.
+    let wins = getWins(log).filter(w => w.source !== "workout");
+    if (exercises.some(e => (e.reps||0) > 0)) wins = [...wins, makeWin(`Session logged — ${total}kg`, "General", "workout")];
+    log.wins = wins;
     saveLog(log);
     if (Number(bw) && Number(bw) !== settings.bodyWeight) saveSettings({ ...settings, bodyWeight: Number(bw) });
     const streak = computeStreak({ ...(logs || {}), [date]: log }, today);
@@ -1710,7 +2201,16 @@ function DayEditor({ date, base, settings, saveLog, saveSettings, logs, today, c
                   </div>
                 ))}
               </div>
-              <button className="sm ghost addset" onClick={()=>{ haptic(8); addSet(ri); }}>+ set</button>
+              <div className="row mt8" style={{gap:8}}>
+                <button className="sm ghost addset" onClick={()=>{ haptic(8); addSet(ri); }}>+ set</button>
+                {!(openNotes[ri] || (r.note && r.note.length)) && (
+                  <button className="sm ghost addset" onClick={()=>{ haptic(6); setOpenNotes({...openNotes,[ri]:true}); }}>+ rest / notes</button>
+                )}
+              </div>
+              {(openNotes[ri] || (r.note && r.note.length)) && (
+                <input className="ex-note mt8" placeholder="rest, form notes, how it felt"
+                  value={r.note||""} onChange={e=>setRowNote(ri, e.target.value)} />
+              )}
             </div>
           ))}
         </div>
@@ -1827,7 +2327,7 @@ function DayEditor({ date, base, settings, saveLog, saveSettings, logs, today, c
 /* ============================================================
    PATTERNS TAB (Module 5)
    ============================================================ */
-function PatternsTab({ settings, logs, today }) {
+function PatternsTab({ settings, logs, events, today }) {
   const allLogs = Object.values(logs).sort((a,b)=>a.date.localeCompare(b.date));
   const cal = settings.stressCalendar;
 
@@ -1839,7 +2339,7 @@ function PatternsTab({ settings, logs, today }) {
       (groups[k] = groups[k] || []).push(l);
     });
     return Object.entries(groups).map(([k, items]) => {
-      const type = weekTypeFor(k, cal).type;
+      const type = effectiveWeekFor(k, cal, events).type; // targets follow effective (max) type
       const tgt = weeklyTargets(type);
       const volume = items.reduce((s,l)=>s+logVolume(l),0);
       const protein = items.reduce((s,l)=>s+(l.diet?.protein_estimate_g||0),0);
@@ -1849,7 +2349,27 @@ function PatternsTab({ settings, logs, today }) {
       const vsTarget = tgt.volume>0 ? (volume/tgt.volume)*100 : 0;
       return { key:k, type, volume, protein, frictions, energy, water, days:items.length, vsTarget, tgt };
     }).sort((a,b)=>b.key.localeCompare(a.key));
-  }, [allLogs, cal]);
+  }, [allLogs, cal, events]);
+
+  // experiment correlation (item 3) — v1 basic: tried days vs all other days
+  const experimentStats = useMemo(() => {
+    const byId = {};
+    allLogs.forEach(l => {
+      const e = l.experiment;
+      if (e && e.tried) { (byId[e.id] = byId[e.id] || { id:e.id, text:e.text, tried:[] }).tried.push(l); }
+    });
+    const avg = (arr, f) => arr.length ? arr.reduce((s,l)=>s+f(l),0)/arr.length : 0;
+    const rate = (arr, f) => arr.length ? Math.round(100*arr.filter(f).length/arr.length) : 0;
+    return Object.values(byId).map(g => {
+      const triedDates = new Set(g.tried.map(l=>l.date));
+      const other = allLogs.filter(l => !triedDates.has(l.date));
+      return {
+        id:g.id, text:g.text, n:g.tried.length,
+        volTried: Math.round(avg(g.tried, logVolume)), volOther: Math.round(avg(other, logVolume)),
+        focusTried: rate(g.tried, l=>l.focus_done), focusOther: rate(other, l=>l.focus_done)
+      };
+    }).sort((a,b)=>b.n-a.n);
+  }, [allLogs]);
 
   // this month summary
   const month = today.slice(0,7);
@@ -1956,6 +2476,25 @@ function PatternsTab({ settings, logs, today }) {
       </div>
 
       <div className="card">
+        <h3>Experiments</h3>
+        {experimentStats.length === 0 && (
+          <p className="muted small mt8">Mark experiments tried on Today to see how they correlate with your logged days.</p>
+        )}
+        {experimentStats.length > 0 && (
+          <div className="col mt8 small" style={{gap:12}}>
+            {experimentStats.map(s => (
+              <div key={s.id} className="corr">
+                <div style={{fontWeight:650}}>{s.text}</div>
+                <div className="tiny muted mt8">
+                  Tried {s.n} day{s.n===1?"":"s"} · volume {s.volTried}kg vs {s.volOther}kg · focus done {s.focusTried}% vs {s.focusOther}%
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="card">
         <h3>Export</h3>
         <div className="col mt12">
           <button className="primary block" onClick={async()=>{ const ok = await copyText(JSON.stringify(buildExportDump(),null,2)); setCopyMsg(ok?"Everything copied — settings, logs, milestones, alerts":"Copy failed"); }}>Copy everything (JSON)</button>
@@ -1968,10 +2507,48 @@ function PatternsTab({ settings, logs, today }) {
   );
 }
 
+/* Add / remove / reorder editor for a list of short strings (items 1 & 5).
+   Shared by the Today's-focus list and the win-category list. */
+function StringListEditor({ items, onChange, placeholder }) {
+  const [draft, setDraft] = useState("");
+  const move = (i, dir) => {
+    const j = i + dir;
+    if (j < 0 || j >= items.length) return;
+    const next = items.slice(); next.splice(j, 0, next.splice(i, 1)[0]); onChange(next);
+  };
+  const add = () => {
+    const v = draft.trim();
+    if (!v || items.includes(v)) return;
+    onChange([...items, v]); setDraft("");
+  };
+  return (
+    <div>
+      <div className="col mt12" style={{gap:6}}>
+        {items.map((it, idx) => (
+          <div key={idx} className="row between" style={{padding:"4px 0"}}>
+            <span className="small grow" style={{minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{it}</span>
+            <span className="row" style={{gap:4}}>
+              <button className="sm ghost" disabled={idx===0} onClick={()=>{ haptic(6); move(idx,-1); }}>↑</button>
+              <button className="sm ghost" disabled={idx===items.length-1} onClick={()=>{ haptic(6); move(idx,1); }}>↓</button>
+              <button className="sm ghost" onClick={()=>{ haptic(8); onChange(items.filter((_,i)=>i!==idx)); }}>✗</button>
+            </span>
+          </div>
+        ))}
+        {items.length===0 && <p className="tiny muted">Empty — add one below.</p>}
+      </div>
+      <div className="row mt12" style={{gap:6}}>
+        <input className="grow" placeholder={placeholder} value={draft} onChange={e=>setDraft(e.target.value)}
+          onKeyDown={e=>{ if (e.key==="Enter") add(); }} />
+        <button className="sm" disabled={!draft.trim()} onClick={add}>Add</button>
+      </div>
+    </div>
+  );
+}
+
 /* ============================================================
    SETTINGS TAB (Module 6)
    ============================================================ */
-function SettingsTab({ settings, saveSettings, milestones, saveMilestone, deleteMilestone, today, setLogs, setMilestones, setAlertLogs }) {
+function SettingsTab({ settings, saveSettings, milestones, saveMilestone, deleteMilestone, events, saveEvents, today, setLogs, setMilestones, setAlertLogs }) {
   const [bw, setBw] = useState(String(settings.bodyWeight));
   const [protein, setProtein] = useState(String(settings.proteinWeekly));
   const [water, setWater] = useState(String(settings.waterDaily));
@@ -1996,6 +2573,13 @@ function SettingsTab({ settings, saveSettings, milestones, saveMilestone, delete
 
   const [newPeriod, setNewPeriod] = useState({start:"",end:"",type:"MEDIUM",note:""});
 
+  // personal events editing (item 6)
+  const [newEvent, setNewEvent] = useState({date:"",label:"",load:"heavy",note:""});
+
+  // editable string lists (items 1 & 5)
+  const focusOptions = settings.focusOptions || FOCUS_OPTIONS;
+  const winCategories = settings.winCategories || WIN_CATEGORIES;
+
   // milestone editing (lightweight)
   const [editM, setEditM] = useState(null);
 
@@ -2007,6 +2591,7 @@ function SettingsTab({ settings, saveSettings, milestones, saveMilestone, delete
     try {
       const d = JSON.parse(importTxt);
       if (d.gc_settings) store.set("gc_settings", d.gc_settings);
+      if (d.gc_events) store.set("gc_events", d.gc_events);
       if (d.logs) Object.entries(d.logs).forEach(([k,v])=>store.set(k,v));
       if (d.milestones) d.milestones.forEach(m=>store.set("milestone_"+m.id, m));
       if (d.alert_logs) Object.entries(d.alert_logs).forEach(([k,v])=>store.set(k,v));
@@ -2016,7 +2601,7 @@ function SettingsTab({ settings, saveSettings, milestones, saveMilestone, delete
   };
   const clearAll = () => {
     if (delConfirm !== "DELETE") return;
-    store.keys().forEach(k => { if (k.startsWith("log_")||k.startsWith("milestone_")||k.startsWith("alert_log_")||k==="gc_settings"||k==="gc_seeded"||k==="push_subscription") store.del(k); });
+    store.keys().forEach(k => { if (k.startsWith("log_")||k.startsWith("milestone_")||k.startsWith("alert_log_")||k==="gc_settings"||k==="gc_seeded"||k==="push_subscription"||k==="gc_events"||k==="gc_milestone_seen") store.del(k); });
     location.reload();
   };
 
@@ -2081,6 +2666,23 @@ function SettingsTab({ settings, saveSettings, milestones, saveMilestone, delete
       </div>
 
       <div className="card">
+        <h3>Today's focus list</h3>
+        <p className="tiny muted mt8">The quick-win options offered on Today. Reorder, add, or remove.</p>
+        <StringListEditor items={focusOptions} placeholder="new focus option"
+          onChange={(next)=>saveSettings({ ...settings, focusOptions: next })} />
+      </div>
+
+      <div className="card">
+        <h3>Win categories</h3>
+        <p className="tiny muted mt8">Categories offered when logging a win. The last-used one is pre-selected.</p>
+        <StringListEditor items={winCategories} placeholder="new category"
+          onChange={(next)=>{
+            const last = next.includes(settings.lastWinCategory) ? settings.lastWinCategory : (next[next.length-1] || "General");
+            saveSettings({ ...settings, winCategories: next, lastWinCategory: last });
+          }} />
+      </div>
+
+      <div className="card">
         <h3>Stress calendar</h3>
         <div className="col mt12" style={{gap:8}}>
           {cal.map((p,i)=>(
@@ -2106,6 +2708,41 @@ function SettingsTab({ settings, saveSettings, milestones, saveMilestone, delete
             <input className="grow" placeholder="note" value={newPeriod.note} onChange={e=>setNewPeriod({...newPeriod,note:e.target.value})} />
           </div>
           <button className="sm block" onClick={()=>{ if(newPeriod.start&&newPeriod.end){ updateCal([...cal,newPeriod].sort((a,b)=>a.start.localeCompare(b.start))); setNewPeriod({start:"",end:"",type:"MEDIUM",note:""}); } }}>+ Add period</button>
+        </div>
+      </div>
+
+      <div className="card">
+        <h3>Personal events</h3>
+        <p className="tiny muted mt8">Point-date life load, separate from the work calendar. A heavy cluster lifts the week to HIGH.</p>
+        <div className="col mt12" style={{gap:8}}>
+          {events.length === 0 && <p className="tiny muted">No events yet.</p>}
+          {events.map((ev,i)=>(
+            <div key={i} className="list-item">
+              <div className="col gap4">
+                <span className="small" style={{fontWeight:600}}>{ev.label}</span>
+                <span className="tiny muted">
+                  <span className={"badge " + (ev.load==="heavy"?"HIGH":"LOW")} style={{marginRight:6}}>{ev.load}</span>
+                  {prettyDate(ev.date)}{ev.note?` · ${ev.note}`:""}
+                </span>
+              </div>
+              <button className="sm ghost" onClick={()=>saveEvents(events.filter((_,idx)=>idx!==i))}>✗</button>
+            </div>
+          ))}
+        </div>
+        <hr className="divider" />
+        <div className="col" style={{gap:8}}>
+          <div className="row" style={{gap:6}}>
+            <input type="date" value={newEvent.date} onChange={e=>setNewEvent({...newEvent,date:e.target.value})} />
+            <select value={newEvent.load} onChange={e=>setNewEvent({...newEvent,load:e.target.value})} style={{width:110}}>
+              <option value="heavy">heavy</option><option value="light">light</option>
+            </select>
+          </div>
+          <input placeholder="label (e.g. Daughter's birthday)" value={newEvent.label} onChange={e=>setNewEvent({...newEvent,label:e.target.value})} />
+          <input placeholder="note (optional)" value={newEvent.note} onChange={e=>setNewEvent({...newEvent,note:e.target.value})} />
+          <button className="sm block" disabled={!newEvent.date||!newEvent.label.trim()} onClick={()=>{
+            saveEvents([...events, { id:"evt_"+Date.now().toString(36), date:newEvent.date, label:newEvent.label.trim(), load:newEvent.load, note:newEvent.note.trim() }]);
+            setNewEvent({date:"",label:"",load:"heavy",note:""});
+          }}>+ Add event</button>
         </div>
       </div>
 
