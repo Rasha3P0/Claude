@@ -60,7 +60,10 @@ press *Enable background push*.
 - Push payloads are end-to-end encrypted by the Web Push protocol; the push
   service cannot read them.
 - Stored data is a push subscription (an opaque endpoint URL + per-subscription
-  keys) plus the milestone schedule — no Ground Control health/portfolio data.
+  keys) plus a minimal schedule: each milestone's `id`, `name`, `project`, and
+  `fire` date. The **detailed action text is never sent to or stored on the
+  server** — the notification body is generic and the full action is shown in-app
+  on tap. No health/portfolio data is stored.
 
 ## Reference-grade — what to harden for production
 - **Store:** JSON file by default. Replace `store` (three methods: `upsert`,

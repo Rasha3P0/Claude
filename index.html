@@ -950,7 +950,8 @@ const googleDrive = (() => {
 
   function rememberId(settings, saveSettings, id) {
     fileId = id;   // module cache so a second write doesn't depend on a React re-render
-    if (((settings.drive || {}).fileId) !== id) saveSettings({ ...settings, drive: { ...(settings.drive || {}), fileId: id } });
+    const cur = store.get("gc_settings", settings) || settings;   // merge into the freshest settings, not a stale snapshot
+    if (((cur.drive || {}).fileId) !== id) saveSettings({ ...cur, drive: { ...(cur.drive || {}), fileId: id } });
   }
 
   async function resolveFile(settings, saveSettings) {
@@ -1044,8 +1045,10 @@ const webpush = {
   scheduleBody(settings, sub, milestones) {
     return JSON.stringify({
       subscription: sub,
+      // Only what the server needs to schedule and show a minimal notification —
+      // NOT the detailed action text (that stays off the server; shown in-app on tap).
       milestones: (milestones || [])
-        .map(m => ({ id: m.id, name: m.name, project: m.project, action: (m.action || "").slice(0, 140), fire: effectiveFire(m, todayStr()) }))
+        .map(m => ({ id: m.id, name: m.name, project: m.project, fire: effectiveFire(m, todayStr()) }))
         .filter(x => x.fire)
     });
   },
@@ -1482,11 +1485,14 @@ function App() {
 
   /* ---- service worker registration + notification deep-link wiring ---- */
   useEffect(() => {
+    let onSwMessage = null;
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("sw.js").catch(()=>{});
-      navigator.serviceWorker.addEventListener("message", (ev) => {
-        // Defence in depth: only trust messages from our own SW controller.
-        if (ev.source && navigator.serviceWorker.controller && ev.source !== navigator.serviceWorker.controller) return;
+      onSwMessage = (ev) => {
+        // Only trust messages from an actual service worker (not a window/port),
+        // and from our controller once one is set.
+        if (!(ev.source instanceof ServiceWorker)) return;
+        if (navigator.serviceWorker.controller && ev.source !== navigator.serviceWorker.controller) return;
         if (ev.data && ev.data.type === "NOTIFICATION_CLICK") {
           const m = loadMilestones().find(x => x.id === ev.data.id);
           if (m) { setTab("alerts"); setAlertOpen({ milestone: m }); }
@@ -1496,7 +1502,8 @@ function App() {
           const s = store.get("gc_settings", DEFAULT_SETTINGS);
           if (s.push && s.push.subscribed) webpush.subscribe(s, saveSettings);
         }
-      });
+      };
+      navigator.serviceWorker.addEventListener("message", onSwMessage);
     }
     // deep-link from a cold open: /?alert=<id>
     const params = new URLSearchParams(location.search);
@@ -1506,6 +1513,7 @@ function App() {
       if (m) { setTab("alerts"); setAlertOpen({ milestone: m }); }
       history.replaceState({}, "", location.pathname);
     }
+    return () => { if (onSwMessage) navigator.serviceWorker.removeEventListener("message", onSwMessage); };
   }, []);
 
   /* ---- client-side scheduling: re-arm timers on open (Module 1) ----
@@ -1535,7 +1543,7 @@ function App() {
       }
     });
     // If background push is on, keep the server's copy of the schedule current.
-    webpush.syncSchedule(settings);
+    webpush.syncSchedule(store.get("gc_settings", settings));
     return () => { timers.current.forEach(t => clearTimeout(t)); };
   }, [milestones, today]);
 
@@ -2204,12 +2212,19 @@ function AlertScreen({ milestone: m, settings, saveSettings, recordAlert, saveMi
   const [copied, setCopied] = useState(false);
   const [driveState, setDriveState] = useState("idle"); // idle | writing | done
   const [driveErr, setDriveErr] = useState("");
+  const writingRef = useRef(false);
 
   const writeToDrive = async () => {
+    if (writingRef.current || driveState !== "idle") return;  // synchronous guard — a double-click can fire before the button disables
+    writingRef.current = true;
     setDriveErr(""); setDriveState("writing");
-    const r = await googleDrive.appendMarkdown(markdown, settings, saveSettings);
-    if (r.ok) setDriveState("done");
-    else { setDriveState("idle"); setDriveErr(r.error || "Write failed."); }
+    try {
+      const r = await googleDrive.appendMarkdown(markdown, settings, saveSettings);
+      if (r.ok) setDriveState("done");
+      else { setDriveState("idle"); setDriveErr(r.error || "Write failed."); }
+    } finally {
+      writingRef.current = false;
+    }
   };
 
   const buildMarkdown = (resp, text) => {

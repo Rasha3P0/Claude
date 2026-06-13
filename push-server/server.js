@@ -44,13 +44,18 @@ if (!ALLOW_ORIGIN) {
   console.error("Missing ALLOW_ORIGIN. Set it to your PWA origin (e.g. https://my-app.example) — refusing to start with an open CORS policy.");
   process.exit(1);
 }
+if (!ADMIN_TOKEN) {
+  console.warn("ADMIN_TOKEN is unset — POST /send is disabled (returns 401). The built-in hourly tick still delivers.");
+}
 webpush.setVapidDetails(SUBJECT, PUBLIC_KEY, PRIVATE_KEY);
 
 // Constant-time compare so the admin token can't be recovered via response timing.
+// Hash to a fixed length first so neither length nor content leaks through timing.
 function safeEqual(a, b) {
   if (!a || !b) return false;
-  const ba = Buffer.from(String(a)), bb = Buffer.from(String(b));
-  return ba.length === bb.length && crypto.timingSafeEqual(ba, bb);
+  const ha = crypto.createHash("sha256").update(String(a)).digest();
+  const hb = crypto.createHash("sha256").update(String(b)).digest();
+  return crypto.timingSafeEqual(ha, hb);
 }
 
 /* ---- subscription store (file-backed; swap for a real DB in production) ---- */
@@ -79,7 +84,7 @@ function isoToday() { return new Date().toISOString().slice(0, 10); }
 
 function pruneSent(sent, days = 30) {
   const cutoff = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
-  for (const key of Object.keys(sent)) if (sent[key] < cutoff) delete sent[key];
+  for (const key of Object.keys(sent)) if (sent[key] <= cutoff) delete sent[key];
 }
 
 function validSubscription(s) {
@@ -120,7 +125,9 @@ async function runDue() {
         if (!m.fire || m.fire > today) continue;          // not due yet
         const dedupe = m.id + "@" + m.fire;
         if (rec.sent[dedupe]) continue;                    // already delivered
-        const payload = JSON.stringify({ id: m.id, project: m.project, title: m.name, body: (m.action || "").slice(0, 140) });
+        // Body is intentionally generic — the detailed action is shown in-app on tap,
+        // never stored on or sent through the server.
+        const payload = JSON.stringify({ id: m.id, project: m.project, title: m.name, body: "Open Ground Control to review the action." });
         try {
           await webpush.sendNotification(rec.subscription, payload);
           rec.sent[dedupe] = today; sent++;
@@ -144,7 +151,7 @@ const server = http.createServer(async (req, res) => {
 
   try {
     if (req.method === "GET" && url.pathname === "/health") {
-      return send(res, 200, { ok: true, subscriptions: Object.keys(store.data).length, publicKey: PUBLIC_KEY });
+      return send(res, 200, { ok: true, publicKey: PUBLIC_KEY });
     }
 
     if (req.method === "POST" && url.pathname === "/subscribe") {
