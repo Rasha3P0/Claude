@@ -9,7 +9,8 @@ figures; the reconcile produces them and the DRAFT dashboard).
 ---
 
 ## Inputs
-- Canonical dashboard: highest `portfolio_dashboard_vNN.md` (no `_DRAFT`) in Drive.
+- Canonical dashboard: highest `portfolio_dashboard_vNN.md` (no `_DRAFT`) in Drive
+  (or the repo's `automation/baseline/portfolio_dashboard_v29.md` if Drive has none yet).
 - `automation/data/framework_params.json`, `automation/data/holdings_registry.json`.
 - Live prices (fresh, this run) and live UK macro (fresh).
 

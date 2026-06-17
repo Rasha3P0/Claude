@@ -7,6 +7,9 @@ Produces a DRAFT next-version dashboard the user reviews and commits.
 
 ## Inputs
 - Canonical dashboard: highest `portfolio_dashboard_vNN.md` (no `_DRAFT`) in Drive.
+  **Bootstrap:** if none exists in Drive yet, use the repo's
+  `automation/baseline/portfolio_dashboard_v29.md` as the baseline, and write the
+  resulting `portfolio_dashboard_v30_DRAFT.md` to Drive for the user to promote.
 - `automation/data/holdings_registry.json` (identity + classification + v29 shares),
   `automation/data/framework_params.json` (bands/ceilings/flags).
 - Live prices + live FX, fetched fresh this run.

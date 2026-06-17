@@ -4,13 +4,21 @@ One-time steps. After this, the routines run themselves and write to Drive.
 
 ## 1. Google Drive
 A dedicated folder already exists: **"Ground Control - Portfolio Automation"**
-(My Drive), id `18Pa5lk7mlY-hywSwAMo4cPqjAd5DiICo`. It is seeded with:
-- `portfolio_dashboard_v29.md` — canonical baseline (source of truth).
+(My Drive), id `18Pa5lk7mlY-hywSwAMo4cPqjAd5DiICo`. Already in it:
 - `README_FORMAT.md` — the output contract the routines follow.
-- `automation_log/` — dated entry files (the append-only log).
+- `automation_log/` — dated entry files (already has the inaugural skeleton entry).
 
-**Tidy-up:** delete the two `_probe_delete_me.md` files by hand (the Drive
-connector has no delete tool, so they were left by the create-only probe).
+**You must place the canonical baseline** (one time): drag your
+`portfolio_dashboard_v29.md` into the folder, named exactly that. It could not be
+auto-uploaded — the Drive connector only takes small inline content (117 KB
+exceeds it) and can't upload-from-file. A verbatim copy is in the repo at
+`automation/baseline/portfolio_dashboard_v29.md`. (Alternatively, skip this and let
+the first reconcile bootstrap from the repo baseline and write a v30 draft you
+promote — see `_PLACE_v29_BASELINE_HERE.md` in the folder.)
+
+**Tidy-up:** delete `_PLACE_v29_BASELINE_HERE.md` (after placing the baseline) and
+the two `_probe_delete_me.md` files by hand — the connector has no delete tool, so
+the create-only probe left them.
 
 **Promoting a draft:** when a reconcile writes `portfolio_dashboard_vNN_DRAFT.md`,
 review it, then save/rename it as `portfolio_dashboard_vNN.md` to make it canonical.

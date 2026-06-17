@@ -82,6 +82,11 @@ See `docs/SETUP.md` for step-by-step trigger wiring.
   log is a **folder of immutable dated files** (`automation_log/`), not one growing
   file (see `DRIVE_OUTPUT_FORMAT.md` §0). Two `_probe_delete_me.md` test files were
   left in the Drive folder by the probe — delete them by hand in the Drive UI.
+- **Baseline can't be auto-uploaded.** The 117 KB v29 exceeds the connector's
+  inline-content limit and there is no upload-from-file, so the user places
+  `portfolio_dashboard_v29.md` in the Drive folder (or lets the first reconcile
+  bootstrap from `baseline/`). See `docs/SETUP.md` and the in-folder
+  `_PLACE_v29_BASELINE_HERE.md`.
 - **Gmail is draft-only** (no send) — see Alerts above.
 
 ---
