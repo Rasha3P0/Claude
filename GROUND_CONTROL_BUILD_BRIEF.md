@@ -1,5 +1,5 @@
 # Ground Control — Master Build Brief
-**Version 3.0 — June 2026** (supersedes v2.0)
+**Version 3.1 — June 2026** (supersedes v3.0)
 
 This is the single hand-off document for Ground Control. Give it to a new
 Claude Code session and it has everything needed to build further: current
@@ -122,9 +122,10 @@ These are sandbox realities a new session **will** hit. Save yourself the redisc
 
 > **Date anchoring:** all seed data and the stress calendar are anchored to
 > **mid-2026** (the app treats `new Date()` as "today"; this session's "today" is
-> **2026-06-13**, a HIGH work week). If you build much later than mid-2026, the
-> seeded calendar/milestones/events will be in the past — refresh them or expect
-> "today" to fall outside the seeded ranges (the app degrades gracefully to LOW).
+> **2026-06-21**, a HIGH work week — 2026-06-17→06-22 HIGH). SEED_EVENTS updated
+> to v2 (8 events through Jul 11). The work calendar is current through Sep 2026.
+> If you build much later, refresh SEED_EVENTS or expect the app to degrade
+> gracefully to LOW for dates outside the seeded ranges.
 
 ---
 
@@ -422,11 +423,18 @@ Likely near-term polish on the existing app (candidate backlog, not committed):
 - Optional push reminder 3 days before a heavy personal event (infra exists; display-first today).
 - Google Drive OAuth write-back (phase 2; currently copy/paste).
 - Enable the API coach layer behind a proxy.
-- Refresh seed calendar/milestones/events when the real date moves past mid-2026.
+- ~~Refresh seed calendar/milestones/events when the real date moves past mid-2026.~~ ✓ Done (v3.1).
 
 ---
 
 ## 12. Changelog
+- **v3.1 (Jun 2026)** — Seed calendar & events refresh (data-only). `SEED_EVENTS`
+  bumped to v2: adds 5 new events (Jun 26 school closed, Jun 29 DVSA theory test,
+  Jul 3 after-school clubs end, Jul 10 school reports, Jul 11 PTA Summer Fair).
+  Jul 2/4/5 canonical cluster preserved. `SEED_VERSION = 2` migration merges new
+  events into existing installs (add-only, no removals). New Settings action under
+  Personal events: "Refresh calendar & events from latest seed" (confirmable overwrite
+  for a clean reset). DEFAULT_CALENDAR verified correct for 2026-06-21 (HIGH week).
 - **v3.0 (Jun 2026)** — Rewritten as a stateful hand-off: repo/branch/workflow,
   sandbox build-and-verify notes, full data model, code map, and PR #1–#8 state.
   Documents the wins, experiments, personal-events/life-stress, streak-milestone,

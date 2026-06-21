@@ -606,12 +606,18 @@ const SEED_WINS = {
 };
 
 // Personal events / life-stress layer (item 6). Point dates that can cluster.
-// This cluster sits inside the existing Jun 24–Jul 12 LOW work week, so it is
-// the canonical test of max(work, life): that week must present as HIGH.
+// Jul 2/4/5 heavy cluster is the canonical max(work,life) test — do not remove.
+// Bump SEED_VERSION each time SEED_EVENTS grows; migration merges additive-only.
+const SEED_VERSION = 2;
 const SEED_EVENTS = [
+  { date:"2026-06-26", label:"School closed — kids home", load:"heavy", note:"" },
+  { date:"2026-06-29", label:"DVSA theory test", load:"heavy", note:"" },
   { date:"2026-07-02", label:"Daughter's birthday", load:"heavy", note:"" },
+  { date:"2026-07-03", label:"Last day of after-school clubs", load:"light", note:"" },
   { date:"2026-07-04", label:"Son's piano concert + overnight visitor", load:"heavy", note:"" },
-  { date:"2026-07-05", label:"Family birthday lunch (in-laws, venue)", load:"heavy", note:"" }
+  { date:"2026-07-05", label:"Family birthday lunch (in-laws, venue)", load:"heavy", note:"" },
+  { date:"2026-07-10", label:"School reports sent to parents", load:"light", note:"" },
+  { date:"2026-07-11", label:"PTA Summer Fair (12–16)", load:"light", note:"" }
 ];
 
 /* ============================================================
@@ -958,6 +964,16 @@ function seedIfNeeded() {
   // Non-destructive migration for installs from earlier builds (PRs #1-7):
   // add the new keys without touching existing user data.
   if (store.get("gc_events") == null) store.set("gc_events", SEED_EVENTS);
+  // Migration v2: merge new seed events into existing installs (add-only, never removes user data).
+  if ((store.get("gc_seed_version") || 0) < SEED_VERSION) {
+    const existing = store.get("gc_events") || [];
+    const seen = new Set(existing.map(e => e.date + "|" + e.label));
+    const toAdd = SEED_EVENTS.filter(e => !seen.has(e.date + "|" + e.label));
+    if (toAdd.length) {
+      store.set("gc_events", existing.concat(toAdd).sort((a, b) => a.date.localeCompare(b.date)));
+    }
+    store.set("gc_seed_version", SEED_VERSION);
+  }
   const s = store.get("gc_settings");
   if (s) {
     let changed = false;
@@ -2575,6 +2591,7 @@ function SettingsTab({ settings, saveSettings, milestones, saveMilestone, delete
 
   // personal events editing (item 6)
   const [newEvent, setNewEvent] = useState({date:"",label:"",load:"heavy",note:""});
+  const [refreshConfirm, setRefreshConfirm] = useState(false);
 
   // editable string lists (items 1 & 5)
   const focusOptions = settings.focusOptions || FOCUS_OPTIONS;
@@ -2744,6 +2761,23 @@ function SettingsTab({ settings, saveSettings, milestones, saveMilestone, delete
             setNewEvent({date:"",label:"",load:"heavy",note:""});
           }}>+ Add event</button>
         </div>
+        <hr className="divider" />
+        {!refreshConfirm
+          ? <button className="block" onClick={()=>setRefreshConfirm(true)}>Refresh calendar &amp; events from latest seed</button>
+          : <div className="col" style={{gap:8}}>
+              <p className="tiny" style={{color:"var(--high)"}}>Replaces the work calendar and all personal events with the current seed. Your log entries are untouched.</p>
+              <div className="row" style={{gap:8}}>
+                <button className="ghost grow" onClick={()=>setRefreshConfirm(false)}>Cancel</button>
+                <button className="danger grow" onClick={()=>{
+                  saveSettings({...settings, stressCalendar: DEFAULT_CALENDAR});
+                  saveEvents(SEED_EVENTS);
+                  setRefreshConfirm(false);
+                  setMsg("Calendar and events refreshed");
+                  setTimeout(()=>setMsg(""),1500);
+                }}>Confirm</button>
+              </div>
+            </div>
+        }
       </div>
 
       <div className="card">
