@@ -1,5 +1,5 @@
 # Ground Control — Master Build Brief
-**Version 3.0 — June 2026** (supersedes v2.0)
+**Version 3.1 — June 2026** (supersedes v3.0)
 
 This is the single hand-off document for Ground Control. Give it to a new
 Claude Code session and it has everything needed to build further: current
@@ -19,7 +19,7 @@ how to run/verify in the sandbox, and what is still pending.
 | Thing | Value |
 |-------|-------|
 | **GitHub repo** | `Rasha3P0/Claude` (a.k.a. `rasha3p0/claude`) — repo description "Fable maxxing" |
-| **Canonical branch** | **`main`** — branch off it for all new work. Current `main` tip: PR #8 (`Add wins tracking, experiments, personal events, and streak milestones`). |
+| **Canonical branch** | **`main`** — branch off it for all new work. Current `main` tip: PR #9 (`Add Ground Control master build brief v3.0`). Next incoming: seed-refresh branch `claude/eloquent-keller-nyhitw`. |
 | **What it is** | A single-file React 18 PWA. No build step. `index.html` (~2.8k lines) holds the whole app; React + Babel load from CDN. |
 | **Deploy** | Static. Vercel (`vercel.json`) or Netlify (`netlify.toml`). Deploy repo root as-is. Vercel auto-deploys PRs (status check "Vercel"). |
 | **Storage** | Everything in `localStorage`. No backend. |
@@ -122,9 +122,10 @@ These are sandbox realities a new session **will** hit. Save yourself the redisc
 
 > **Date anchoring:** all seed data and the stress calendar are anchored to
 > **mid-2026** (the app treats `new Date()` as "today"; this session's "today" is
-> **2026-06-13**, a HIGH work week). If you build much later than mid-2026, the
-> seeded calendar/milestones/events will be in the past — refresh them or expect
-> "today" to fall outside the seeded ranges (the app degrades gracefully to LOW).
+> **2026-06-21**, a HIGH work week — 2026-06-17→06-22 HIGH). SEED_EVENTS updated
+> to v2 (8 events through Jul 11). The work calendar is current through Sep 2026.
+> If you build much later, refresh SEED_EVENTS or expect the app to degrade
+> gracefully to LOW for dates outside the seeded ranges.
 
 ---
 
@@ -164,29 +165,30 @@ implemented and verified in a headless browser at 390 px.
 
 One file. `<style>` block at the top (design tokens, skins, components), then a
 single `<script type="text/babel">` with the whole app. Approx. line anchors
-(as of PR #8 — they drift as the file grows, use them as a starting point):
+(as of seed-refresh branch — they drift as the file grows, use them as a starting point):
 
 | Section | ~Line | Notes |
 |---------|------:|-------|
-| `store` (localStorage wrapper) | 469 | `get/set/del/keys`, all JSON. |
-| Seed constants | 484 | volume map, calendar, milestones, seed logs, settings, skins, friction types. |
+| `store` (localStorage wrapper) | 473 | `get/set/del/keys`, all JSON. |
+| Seed constants | 486 | `DEFAULT_VOLUME_MAP`, `DEFAULT_CALENDAR`, `DEFAULT_MILESTONES`, seed logs, `DEFAULT_SETTINGS`, skins, friction types. |
 | `DEFAULT_SETTINGS` | 543 | includes `focusOptions`, `winCategories`, `lastWinCategory`. |
-| `EXPERIMENTS` / `SEED_WINS` / `SEED_EVENTS` | 570 / 586 / 611 | item 3 / 5 / 6 seeds. |
-| Date + domain helpers | 618 | `isoDate`, `parseISO`, `mondayOf`, `weekTypeFor`, `weeklyTargets`, milestone next-fire logic. |
-| **Life-stress layer** | 657 | `SEV`, `maxType`, `lifeStressForWeek`, `effectiveWeekFor`, `heavyClusters`, `clusterDateRange`. |
-| **Wins helpers** | 712 | `makeWin`, `getWins`, `normWin`, `winTime`, `experimentFor`. |
-| Coach message rules | 801 | `coachMessage(ctx)` — ordered rules, personal-HIGH condition before default. |
-| `emptyLog`, `dayCounts`, `computeStreak`, `STREAK_MILESTONES`, `milestoneSub` | ~820–910 | streak counts wins; milestone tiers. |
-| Seed on first launch + migration | 937 | `seedIfNeeded()` — seeds fresh; **non-destructively migrates** older installs (adds `gc_events`, `focusOptions`, `winCategories`, `lastWinCategory`). |
-| UI primitives + dopamine layer | 1010 | `ProgressBar`, `Segment`, `Ring`, `useCountUp`, `Reward` (has a `big` milestone variant). |
-| `App` (root) | 1156 | state, effective `week`, scheduling, streak-milestone effect, renders tabs + reward overlays. |
-| Today tab | 1378 | `FocusCard`, `WinsCard`, `WinsHistorySheet`, `ExperimentCard`, `UpcomingCard`, `UpcomingEventsSheet`, `TodayTab`, `QuickSetSheet`. |
-| Alerts tab | 1824 | `AlertsTab`, `AlertScreen` (Confirm/Snooze/Dismiss + Drive markdown). |
-| Log tab | 2008 | `LogTab`, `DayEditor` (per-set + per-exercise notes; preserves focus/wins/experiment on save). |
-| Patterns tab | 2328 | month summary, week table (effective type), correlations, **experiments correlation**, export. |
-| `StringListEditor` | 2512 | reusable add/remove/reorder for string lists (focus options, win categories). |
-| Settings tab | 2549 | targets, skins, exercises, **focus list**, **win categories**, stress calendar, **personal events**, milestones, data export/import/clear. |
-| Boot | end | `seedIfNeeded(); ReactDOM.createRoot(...).render(<App/>)`. |
+| `EXPERIMENTS` / `SEED_WINS` | 570 / 586 | item 3 / 5 seeds. |
+| `SEED_VERSION` / `SEED_EVENTS` | 611 / 612 | version int + 8 personal events (item 6). Bump `SEED_VERSION` each time `SEED_EVENTS` grows. |
+| Date + domain helpers | 623 | `isoDate`, `parseISO`, `mondayOf`, `weekTypeFor`, `weeklyTargets`, milestone next-fire logic. |
+| **Life-stress layer** | 663 | `SEV`, `maxType`, `lifeStressForWeek`, `effectiveWeekFor`, `heavyClusters`, `clusterDateRange`. |
+| **Wins helpers** | 718 | `makeWin`, `getWins`, `normWin`, `winTime`, `experimentFor`. |
+| Coach message rules | ~810 | `coachMessage(ctx)` — ordered rules, personal-HIGH condition before default. |
+| `emptyLog`, `dayCounts`, `computeStreak`, `STREAK_MILESTONES`, `milestoneSub` | ~830–940 | streak counts wins; milestone tiers. |
+| Seed on first launch + migration | 943 | `seedIfNeeded()` — seeds fresh; migrates older installs (adds `gc_events`/`focusOptions`/`winCategories`; merges new seed events via `SEED_VERSION` check). |
+| UI primitives + dopamine layer | 1026 | `ProgressBar`, `Segment`, `Ring`, `useCountUp`, `Reward` (has a `big` milestone variant). |
+| `App` (root) | 1172 | state, effective `week`, scheduling, streak-milestone effect, renders tabs + reward overlays. |
+| Today tab | ~1390 | `FocusCard`, `WinsCard`, `WinsHistorySheet`, `ExperimentCard`, `UpcomingCard`, `UpcomingEventsSheet`, `TodayTab`, `QuickSetSheet`. |
+| Alerts tab | 1842 | `AlertsTab`, `AlertScreen` (Confirm/Snooze/Dismiss + Drive markdown). |
+| Log tab | 2026 | `LogTab`, `DayEditor` (per-set + per-exercise notes; preserves focus/wins/experiment on save). |
+| Patterns tab | 2346 | month summary, week table (effective type), correlations, **experiments correlation**, export. |
+| `StringListEditor` | 2528 | reusable add/remove/reorder for string lists (focus options, win categories). |
+| Settings tab | 2567 | targets, skins, exercises, **focus list**, **win categories**, stress calendar, **personal events** (+ seed-refresh action), milestones, data export/import/clear. |
+| Boot | 2853 | `seedIfNeeded(); ReactDOM.createRoot(...).render(<App/>)`. |
 
 **Reward layer (reuse it — do not bolt on parallel celebrations):**
 `celebrate(r)` → small per-day `Reward`. Streak milestones set a separate
@@ -202,6 +204,7 @@ prevents re-firing.
 |-----|-------|
 | `gc_settings` | settings object (see below). |
 | `gc_seeded` | boolean — don't re-seed. |
+| `gc_seed_version` | int — tracks which `SEED_VERSION` the migration has run to; absent on pre-v3.1 installs (treated as 0). |
 | `gc_events` | **array of personal events** `{ id, date, label, load:"heavy"\|"light", note }`. |
 | `gc_milestone_seen` | `{ [streakValue]: "YYYY-MM-DD" }` — milestones already celebrated. |
 | `log_YYYY-MM-DD` | daily log entry (see shape below). |
@@ -367,9 +370,13 @@ available Claude model.** (Do not hard-code internal model identifiers in commit
    MEDIUM, else LOW. Today shows both when they differ ("Work: LOW · Life: HIGH → plan as
    HIGH"), an **Upcoming** card (next 1–2 events + days-away; explicit callout if a personal-HIGH
    cluster is within 10 days), and a coach condition (personal-HIGH within 7 days). Seeded
-   with the **Jul 2/4/5** heavy cluster — the canonical `max(work,life)` test: that week is
-   LOW for work but must present as **HIGH**.
+   with **8 events** (v3.1): Jun 26 (school closed), Jun 29 (DVSA theory), Jul 2 (birthday),
+   Jul 3 (after-school clubs end), Jul 4 (piano concert+sleepover), Jul 5 (family lunch),
+   Jul 10 (school reports), Jul 11 (PTA fair). The **Jul 2/4/5** heavy triple is the
+   canonical `max(work,life)` test — Jun 29–Jul 5 must present as **HIGH** (Work LOW).
    - Event shape: `{ id, date, label, load:"heavy"|"light", note }`.
+   - Migration: `SEED_VERSION` int + `gc_seed_version` localStorage key. Bump `SEED_VERSION`
+     and add entries to `SEED_EVENTS` to push new events to existing installs (add-only).
 
 ---
 
@@ -407,6 +414,13 @@ streak/reward layer (no new celebration type); seed wins for 2026-06-13 visible;
 **HIGH** (Work LOW · Life HIGH) with the mismatch shown and the coach condition firing
 within 7 days; nav colour + targets + badge follow the effective (max) week type.
 
+**Seed refresh (v3.1 / `claude/eloquent-keller-nyhitw`):** fresh install has all 8 events;
+Jun 22–28 reads effective MEDIUM (1 heavy: Jun 26); Jun 29–Jul 5 reads effective HIGH
+(4 heavy cluster); Jul 6–12 reads effective LOW (only light events); existing install
+picks up new events on next open without losing any user-added/edited events;
+Settings → Personal events shows "Refresh calendar & events from latest seed" button
+(confirmable, ≥44 px tap targets, no `<form>` tags); no crash on old logs missing keys.
+
 ---
 
 ## 11. Pending / future modules (not yet built)
@@ -422,11 +436,18 @@ Likely near-term polish on the existing app (candidate backlog, not committed):
 - Optional push reminder 3 days before a heavy personal event (infra exists; display-first today).
 - Google Drive OAuth write-back (phase 2; currently copy/paste).
 - Enable the API coach layer behind a proxy.
-- Refresh seed calendar/milestones/events when the real date moves past mid-2026.
+- ~~Refresh seed calendar/milestones/events when the real date moves past mid-2026.~~ ✓ Done (v3.1).
 
 ---
 
 ## 12. Changelog
+- **v3.1 (Jun 2026)** — Seed calendar & events refresh (data-only). `SEED_EVENTS`
+  bumped to v2: adds 5 new events (Jun 26 school closed, Jun 29 DVSA theory test,
+  Jul 3 after-school clubs end, Jul 10 school reports, Jul 11 PTA Summer Fair).
+  Jul 2/4/5 canonical cluster preserved. `SEED_VERSION = 2` migration merges new
+  events into existing installs (add-only, no removals). New Settings action under
+  Personal events: "Refresh calendar & events from latest seed" (confirmable overwrite
+  for a clean reset). DEFAULT_CALENDAR verified correct for 2026-06-21 (HIGH week).
 - **v3.0 (Jun 2026)** — Rewritten as a stateful hand-off: repo/branch/workflow,
   sandbox build-and-verify notes, full data model, code map, and PR #1–#8 state.
   Documents the wins, experiments, personal-events/life-stress, streak-milestone,
