@@ -1,0 +1,79 @@
+{
+  "_meta": {
+    "purpose": "Single source of the NUMERIC rules for the portfolio automation. Seeded from portfolio_dashboard v29 (17 Jun 2026, 18:20). The Drive dashboard is the SOURCE OF TRUTH; this file is a derived convenience for the runbooks. If a value here ever conflicts with the latest Drive dashboard, the DASHBOARD WINS and this file must be updated (with a changelog note).",
+    "seeded_from": "portfolio_dashboard_v29.md",
+    "seeded_on": "2026-06-17",
+    "currency": "GBP",
+    "broker": "Freetrade Basic",
+    "wrapper": "Stocks & Shares ISA"
+  },
+  "isa_value_reference": {
+    "value_gbp": 13838.06,
+    "as_of": "2026-06-17T18:20:00+01:00",
+    "note": "REFERENCE ONLY. Every run MUST recompute ISA value from live prices; never trust this figure or any figure in the dashboard."
+  },
+  "buckets": {
+    "cash":        {"target_low_pct": 3,  "target_high_pct": 5,  "breach_flag": "withdrawable_cash_pct > 5", "note": "Operative target 3-5% (revised down 5 Jun; external cash covers the buffer/crash role). The context block's old 10% is SUPERSEDED, not deleted - preserve both verbatim."},
+    "gilt_tbill":  {"target_pct": 20, "note": "~20%. T-bill rolling 100% on maturity (~3 Jul 2026). Near-zero duration, cash-like crash bucket - NOT duration/rate exposure."},
+    "quality_div": {"target_low_pct": 55, "target_high_pct": 60, "breach_flag": "quality_div_pct > 60", "note": "Quality + dividend sleeve. EXCLUDES hedge (GBSP), cyclical (NTR), dead (EVR). Computed as: equities - spec_total - (GBSP + NTR + EVR)."},
+    "spec":        {"target_low_pct": 10, "target_high_pct": 15, "hard_ceiling_pct": 15, "breach_flag": "spec_total_pct > 15", "note": "Total speculative sleeve. 15% is the HARD CEILING and OVERRIDES the sub-pot bands: if the sub-bands would sum above 15%, the 15% wins."}
+  },
+  "spec_subpots": {
+    "_classification_rule": "Split by 'can this holding go to zero?'. Single names are ALWAYS risky. A fund that is really a concentrated single-country / single-narrow-theme bet is the riskiest thing in sensible - treat genuinely borderline cases as risky.",
+    "sensible": {"target_pct": 10, "band_low_pct": 9, "band_high_pct": 11, "members": ["BTEK", "SMGB", "RBTX", "ARCG"], "note": "Diversified funds (can draw down but not zero). VFEM is CORE, NOT spec. As of v29 this pot is BELOW the 9% floor BY DESIGN - 'room to add, NOT instruction to add'; filling via DCA."},
+    "risky":    {"target_pct": 5,  "band_low_pct": 4, "band_high_pct": 6,  "members": ["ACHR", "CING", "OKLO"], "note": "Single-name bets (idiosyncratic blow-up can mean zero)."}
+  },
+  "risky_pot_gating": {
+    "status": "RETIRED 2026-06-12 - preserve this deviation verbatim, do NOT rewrite it into a clean rule.",
+    "rule": "The ONLY pre-trade check on risky single-name trades is the GBP ceiling = 6% of current ISA value. Below that line, entries/exits/sizing/thesis quality are the user's call, unrestricted, same-session. Above it, no new risky buy without a closed-loop sell first.",
+    "honest_tension": "This removed the one mechanism that would have caught over-concentration pre-trade (e.g. the 11 Jun OKLO/SMR adds, which happened to round-trip green). The 6% GBP ceiling is the sole backstop. Flagged, NOT resolved - worth re-checking after a few months, especially on a red day."
+  },
+  "skeleton": {
+    "_summary": "A DRAFT-and-SURFACE macro tripwire. NEVER a buy signal, NEVER sizes or executes.",
+    "macro_leg_logic": "( (S&P 500 >= 10% below its trailing 3-month high) OR (FTSE 100 >= 10% below its trailing 3-month high) ) AND ( VIX >= 28 )",
+    "index_drawdown_pct": 10,
+    "vix_min": 28,
+    "both_legs_required": true,
+    "on_trigger": "Macro leg is LIVE. Alert the user that it is time to RE-UNDERWRITE the candidate names. This is NOT a buy signal. Do NOT suggest sizing or execution. A buy would still require: name in its target zone AND a passing re-underwrite (fundamentals intact, weakness is market-driven).",
+    "candidates": ["KO", "GSK", "LSEG"],
+    "optional_candidates": ["Halma", "Spirax-Sarco", "Croda"],
+    "excluded": ["DGE"],
+    "sizing_if_user_chooses_to_act": {"max_names_per_event": 3, "first_tranche_gbp_low": 500, "first_tranche_gbp_high": 750, "max_topups_per_name": 1, "note": "Sizing LOCKED 9 Jun. Recorded for the USER'S OWN reference only - the automation never sizes or executes."},
+    "target_zones": "OPEN - not yet set for KO/GSK/LSEG. Zones go stale in ~3 months; set with fresh prices at a monthly check-in. Until set, a trigger means 're-underwrite', not 'buy'.",
+    "calibration_case": "5 Jun semi crash (SOX -10.3%, S&P -2.6%, VIX ~21) correctly does NOT activate - a sector rout is not broad risk-off. 15 Jun: VIX ~18-19.5, indices up ~1.5% - nowhere near trigger."
+  },
+  "breach_flags_to_alert": {
+    "quality_div_over": "quality_div_pct > 60",
+    "spec_total_over_ceiling": "spec_total_pct > 15",
+    "spec_sensible_out_of_band": "sensible_pct < 9 OR sensible_pct > 11   (NOTE: < 9 as of v29 is BY DESIGN - report it, do not treat as an action trigger)",
+    "spec_risky_out_of_band": "risky_pct < 4 OR risky_pct > 6",
+    "cash_over_target": "withdrawable_cash_pct > 5"
+  },
+  "standing_items_v29": [
+    "Withdrawable cash 6.4% > 5% target - standing over-target item; external cash covers its role; NOT urgent.",
+    "Spec-sensible 7.6% < 9% floor BY DESIGN - filling via the alternating DCA toward the 10% target; room to add, NOT instruction to add."
+  ],
+  "trim_procedure": {
+    "act_when": "a sub-pot leaves its band (sensible >11% or <9%; risky >6% or <4%) OR total spec > 15% - whichever binds first. The 15% total is the hard cap.",
+    "trim_to": "target (10% / 5%), not just the band edge - avoids whipsaw.",
+    "cut_order_lowest_conviction_first": ["no-thesis positions (none currently)", "earmarked exits (none currently)", "trim the GAINS on whatever spiked - bank profit, keep core", "lowest-conviction holdings"],
+    "new_buys": "above the 6% risky-pot line, fund any new risky buy by selling an existing risky position (closed-loop). Below 6%, risky-pot trades are unrestricted. Sensible-pot band and the 15% total ceiling rules are unchanged."
+  },
+  "horizon": {
+    "mortgage_renewal_target": "~mid-2030",
+    "note": "ISA is a SUPPLEMENT to a possible 2nd-property (buy-to-let) purchase funded MAINLY by a home-equity draw, NOT ISA liquidation. No forced ISA liquidation; ISA can stay growth-oriented. Monthly check-in tracks time-left + macro for the property decision."
+  },
+  "execution_policy_NON_NEGOTIABLE": {
+    "1_never_execute": "NEVER place, modify, or cancel any order. No execution, ever. The automation DRAFTS and SURFACES; the user commits. Final trade calls are the user's.",
+    "2_fresh_prices": "ALWAYS fetch prices fresh from a live source at run time - never cache, never trust a figure in the dashboard. For US equities during UK morning, triangulate >=2 live sources and discard stale outliers.",
+    "3_verify_tickers": "Before referencing any fund, verify ticker -> fund name -> underlying index/holdings. Ticker mismatches have caused real errors.",
+    "4_dashboard_edits": "Edit the dashboard only via file tools: view for exact strings first, make targeted edits, append a changelog entry for every change. PRESERVE honest caveats and logged deviations VERBATIM - never rewrite a deviation into a clean rule after the fact.",
+    "5_drafts_only": "Automation DRAFTS a new dashboard version; it does NOT silently overwrite. The user reviews and commits."
+  },
+  "freetrade_costs": {
+    "uk_shares": "0 commission, 0.5% stamp duty on buys (REITs/ITs/ETFs exempt)",
+    "us_eu_shares_fx_per_leg_pct": {"basic": 0.99, "standard": 0.59, "plus": 0.39},
+    "fractional_uk_shares_allowed": false,
+    "note": "FX fee applies to US/EU trade legs only - it is NOT part of mark-to-market valuation (use live spot FX for GBP value). No fractional UK shares - whole UK shares only (drives the whole-share RBTX/ARCG DCA ticket)."
+  }
+}
