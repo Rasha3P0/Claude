@@ -1,7 +1,7 @@
 # Inbox Triage — Handover Document
 
-**Last updated:** 2026-06-19  
-**Written by:** Claude Sonnet 4.6 (session ending)  
+**Last updated:** 2026-07-01  
+**Written by:** Claude Sonnet 5 (session ending)  
 **For:** Next Claude session picking up this routine
 
 ---
@@ -22,9 +22,11 @@ Phase 1 (current): labels are applied but **nothing is removed from inbox**. The
 ```yaml
 phase: 1
 auto_archive: false
-clean_runs: 0          # consecutive runs where user rescued nothing from Archive?
-archive_proposals_seen: 58   # cumulative across all runs
+clean_runs: 4          # consecutive runs where user rescued nothing from Archive? (held, see 2026-07-01 note below)
+archive_proposals_seen: 152   # cumulative across all runs
 ```
+
+**2026-07-01 note:** `label:Label_9` / `label:Label_10` searches return zero results even right after a successful `label_thread` call (verified the label WAS applied via direct `get_thread`). Rescue detection via `in:inbox -label:Triage/Archive?` is currently unreliable — label search appears to lag/not index custom labels in this environment. Until fixed, verify rescues via per-thread `get_thread` lookups (need thread IDs recorded in logs) rather than trusting `search_threads` label queries. Also: two consecutive missed weekday runs (29–30 Jun) before this one — worth checking whether the schedule is firing reliably.
 
 **Graduation rule** (hard-coded, not vibes):  
 Phase 3 (auto-archive) only when `clean_runs >= 3` AND `archive_proposals_seen >= 30`.  
